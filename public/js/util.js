@@ -90,7 +90,11 @@ export function modal(tpl, bind) {
     const inner = document.createElement('div');
     mount(inner, tpl);
     d.replaceChildren(inner);
-    d.onclose = () => close(null);
+    // The browser fires "close" asynchronously. If another modal opened right after
+    // (e.g. a confirm box), a late "close" from the previous one must not dismiss it.
+    d.onclose = () => {
+      if (!d.open) close(null);
+    };
     d.onclick = (e) => {
       if (e.target === d) {
         // Only a click outside the box (on the backdrop) dismisses.
