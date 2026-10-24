@@ -171,3 +171,8 @@ pre.json { margin: 0; background: #0E0E1F; border: 2px solid var(--line); paddin
 
 .note { display: flex; flex-direction: column; gap: 3px; text-align: left; background: var(--panel-2); border: 2px dashed var(--gold); padding: 6px 8px; color: var(--ink); font-family: var(--body); font-size: 18px; cursor: pointer; }
 .note:hover { border-style: solid; }
+
+.map.world { aspect-ratio: 16 / 41; }
+.map .label.town { transform: translateX(-50%); font-size: 7px; white-space: nowrap; z-index: 1; }
+.map .label.river { font-family: var(--body); font-size: 14px; color: #BFE0F5; background: transparent; padding: 0; }
+.map .chibi { z-index: 2; }

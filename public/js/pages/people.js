@@ -180,7 +180,7 @@ export async function personFormPage(view, { arg, params }) {
             <label class="field"><span>CITTÀ</span><input type="text" name="city" list="cities" maxlength="60" value="${p.city}"></label>
             <label class="field"><span>CHI È PER TE</span><input type="text" name="role" maxlength="80" value="${p.role}" placeholder="collega, suocera…"></label>
           </div>
-          <datalist id="cities"><option value="Castelfranco"><option value="Villarazzo"><option value="Stra"><option value="Hải Phòng"><option value="Vietnam"></datalist>
+          <datalist id="cities"><option value="Castelfranco"><option value="Villarazzo"><option value="Vallà"><option value="Asolo"><option value="Vedelago"><option value="Breda di Piave"><option value="Stra"><option value="Hà Nội"><option value="Hải Phòng"></datalist>
           <div class="field"><span class="field-label">LIVELLO</span>
             <div class="row wrap-row">${LEVELS.map((l) => html`<button type="button" class="chip" data-level="${l}" aria-pressed="${p.level === l}">${l}</button>`)}</div>
           </div>
