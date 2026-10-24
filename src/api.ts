@@ -23,6 +23,7 @@ import {
   type Period,
 } from "./logic.js";
 import { getNews, getWeather, NEWS_TABS } from "./feeds.js";
+import { askClaudeToScore, autoScoringEnabled } from "./claude.js";
 
 export const SPRITES = [
   "macchiato", "cornetto", "piatto", "miele", "costine", "pho", "spritz", "monte", "scarpa",
@@ -147,6 +148,155 @@ async function goalSummary<K extends string>(
 }
 
 const monthQ = z.string().regex(/^\d{4}-\d{2}$/);
+
+// ---------- scoring (shared by manual JSON import and automatic Claude API scoring) ----------
+
+const scoredEvent = z.object({
+  id: z.number().int().positive(),
+  punti: z.record(z.string(), z.number()).default({}),
+  motivi: z.record(z.string(), z.string()).default({}),
+  oggetti_raccolti: z
+    .array(
+      z.object({
+        nome: z.string().min(1).max(60),
+        categoria: z.string().max(40).default("Altro"),
+        sprite: z.string().max(30).default("stella"),
+        persone: z.array(z.string().max(60)).max(30).default([]),
+      }),
+    )
+    .max(30)
+    .default([]),
+  suggerimenti: z
+    .array(
+      z.object({
+        persona: z.string().max(60),
+        oggetto: z.string().min(1).max(60),
+        categoria: z.string().max(40).default("Altro"),
+        sprite: z.string().max(30).default("stella"),
+        consiglio: z.string().max(500).default(""),
+      }),
+    )
+    .max(30)
+    .default([]),
+});
+type ScoredEvent = z.output<typeof scoredEvent>;
+const importBody = z.object({ eventi: z.array(scoredEvent).max(200) });
+
+/**
+ * Writes one event's score inside a transaction, replacing whatever an earlier
+ * scoring of the same event produced. Returns null if the event isn't the user's.
+ */
+async function applyScore(c: PoolClient, userId: number, ev: ScoredEvent) {
+  const own = await c.query("SELECT id, event_date FROM events WHERE id=$1 AND user_id=$2", [ev.id, userId]);
+  if (!own.rows[0]) return null;
+  const date: string = own.rows[0].event_date;
+  const people = (await c.query("SELECT id, name FROM people WHERE user_id=$1", [userId])).rows as { id: number; name: string }[];
+  const byName = (n: string) => people.find((p) => p.name.trim().toLowerCase() === n.trim().toLowerCase())?.id;
+  let points = 0;
+  let collected = 0;
+  let suggestions = 0;
+
+  await c.query("DELETE FROM event_points WHERE event_id=$1", [ev.id]);
+  for (const [axis, rawDelta] of Object.entries(ev.punti)) {
+    if (!(AXES as readonly string[]).includes(axis)) continue;
+    const delta = Math.max(-5, Math.min(5, Math.round(rawDelta)));
+    if (delta === 0) continue;
+    await c.query("INSERT INTO event_points (event_id, axis, delta, reason) VALUES ($1,$2,$3,$4)", [
+      ev.id,
+      axis,
+      delta,
+      (ev.motivi[axis] ?? "").slice(0, 300),
+    ]);
+    points += delta;
+  }
+  await c.query("DELETE FROM item_collects WHERE event_id=$1", [ev.id]);
+  await c.query("DELETE FROM suggestions WHERE event_id=$1 AND done=false", [ev.id]);
+  for (const o of ev.oggetti_raccolti) {
+    const itemId = await ensureItem(c, userId, o.nome, o.categoria, o.sprite);
+    for (const name of o.persone) {
+      const pid = byName(name);
+      if (!pid) continue;
+      await collect(c, itemId, pid, date, ev.id);
+      collected += 1;
+    }
+  }
+  for (const s of ev.suggerimenti) {
+    const pid = byName(s.persona);
+    if (!pid) continue;
+    const itemId = await ensureItem(c, userId, s.oggetto, s.categoria, s.sprite);
+    const dup = await c.query("SELECT 1 FROM suggestions WHERE person_id=$1 AND item_id=$2 AND done=false", [pid, itemId]);
+    if (dup.rows[0]) continue;
+    await c.query("INSERT INTO suggestions (user_id, person_id, item_id, tip, event_id) VALUES ($1,$2,$3,$4,$5)", [
+      userId,
+      pid,
+      itemId,
+      s.consiglio,
+      ev.id,
+    ]);
+    suggestions += 1;
+  }
+  await c.query("UPDATE events SET scored_at = now(), score_error = NULL WHERE id=$1", [ev.id]);
+  return { points, collected, suggestions };
+}
+
+// A small per-user cap so a bug or a stuck loop can't run up the API bill.
+const scoreCalls = new Map<number, number[]>();
+function underScoreLimit(userId: number): boolean {
+  const now = Date.now();
+  const recent = (scoreCalls.get(userId) ?? []).filter((t) => now - t < 3600_000);
+  if (recent.length >= 60) return false;
+  recent.push(now);
+  scoreCalls.set(userId, recent);
+  return true;
+}
+
+/** Sends one event to Claude and applies the result. Records the error on the event if it fails. */
+export async function scoreEvent(userId: number, eventId: number, includePrivate: boolean) {
+  const rows = await query<any>(
+    `SELECT e.id, e.event_date, e.when_kind, e.what, e.positive, e.idea, e.is_private,
+       COALESCE((SELECT json_agg(p.name ORDER BY p.name) FROM event_people ep JOIN people p ON p.id = ep.person_id
+         WHERE ep.event_id = e.id), '[]') AS persone
+     FROM events e WHERE e.id = $1 AND e.user_id = $2`,
+    [eventId, userId],
+  );
+  const e = rows[0];
+  if (!e) throw new HttpError(404, "Evento non trovato.");
+  if (e.is_private && !includePrivate) throw new HttpError(400, "Evento privato: confermi di volerlo inviare a Claude?");
+  if (!underScoreLimit(userId)) throw new HttpError(429, "Troppe valutazioni in un'ora, riprova più tardi.");
+  try {
+    const people = await query(
+      "SELECT name AS nome, category AS categoria, city AS citta, role AS ruolo FROM people WHERE user_id=$1",
+      [userId],
+    );
+    const items = await query(
+      `SELECT i.name AS nome, c.name AS categoria, i.sprite FROM items i JOIN item_categories c ON c.id = i.category_id WHERE i.user_id=$1`,
+      [userId],
+    );
+    const result = await askClaudeToScore({
+      persone: people,
+      oggetti_esistenti: items,
+      sprite_disponibili: SPRITES,
+      assi: AXES,
+      evento: {
+        id: e.id,
+        data: e.event_date,
+        data_approssimativa: !["esatta", "oggi", "ieri"].includes(e.when_kind),
+        persone: e.persone,
+        cosa: e.what,
+        positivo: e.positive,
+        idea: e.idea,
+      },
+    });
+    const parsed = scoredEvent.safeParse({ ...(result as object), id: e.id });
+    if (!parsed.success) throw new Error("risposta di Claude non valida");
+    const summary = await tx((c) => applyScore(c, userId, parsed.data));
+    return { id: e.id, ...summary };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await query("UPDATE events SET score_error = $2 WHERE id = $1", [eventId, msg.slice(0, 300)]);
+    throw new HttpError(502, `Claude non ha potuto valutare: ${msg}`);
+  }
+}
 
 export function apiRouter(): Router {
   const r = express.Router();
@@ -303,7 +453,7 @@ export function apiRouter(): Router {
     h(async (req, res) => {
       const userId = uid(req);
       const events = await query(
-        `SELECT e.id, e.when_kind, e.event_date, e.what, e.positive, e.idea, e.is_private, e.scored_at,
+        `SELECT e.id, e.when_kind, e.event_date, e.what, e.positive, e.idea, e.is_private, e.scored_at, e.score_error, e.created_at,
            COALESCE((SELECT json_agg(json_build_object('id', p.id, 'name', p.name, 'category', p.category) ORDER BY p.name)
              FROM event_people ep JOIN people p ON p.id = ep.person_id WHERE ep.event_id = e.id), '[]') AS people,
            COALESCE((SELECT json_agg(json_build_object('axis', pt.axis, 'delta', pt.delta, 'reason', pt.reason))
@@ -313,7 +463,7 @@ export function apiRouter(): Router {
          FROM events e WHERE e.user_id = $1 ORDER BY e.event_date DESC, e.id DESC LIMIT 300`,
         [userId],
       );
-      res.json({ events });
+      res.json({ events, autoScoring: autoScoringEnabled() });
     }),
   );
 
@@ -342,7 +492,12 @@ export function apiRouter(): Router {
         for (const it of items) for (const p of people) await collect(c, it, p, date, eventId);
         return eventId;
       });
-      res.json({ id });
+      // Score in the background so saving stays instant; private events are never sent automatically.
+      const scoring = autoScoringEnabled() && !b.is_private;
+      if (scoring) {
+        scoreEvent(userId, id, false).catch((err) => console.warn(`auto-score event ${id} failed:`, err.message));
+      }
+      res.json({ id, scoring });
     }),
   );
 
@@ -558,107 +713,47 @@ export function apiRouter(): Router {
     }),
   );
 
-  const importBody = z.object({
-    eventi: z
-      .array(
-        z.object({
-          id: z.number().int().positive(),
-          punti: z.record(z.string(), z.number()).default({}),
-          motivi: z.record(z.string(), z.string()).default({}),
-          oggetti_raccolti: z
-            .array(
-              z.object({
-                nome: z.string().min(1).max(60),
-                categoria: z.string().max(40).default("Altro"),
-                sprite: z.string().max(30).default("stella"),
-                persone: z.array(z.string().max(60)).max(30).default([]),
-              }),
-            )
-            .max(30)
-            .default([]),
-          suggerimenti: z
-            .array(
-              z.object({
-                persona: z.string().max(60),
-                oggetto: z.string().min(1).max(60),
-                categoria: z.string().max(40).default("Altro"),
-                sprite: z.string().max(30).default("stella"),
-                consiglio: z.string().max(500).default(""),
-              }),
-            )
-            .max(30)
-            .default([]),
-        }),
-      )
-      .max(200),
-  });
-
   r.post(
     "/claude/import",
     h(async (req, res) => {
       const userId = uid(req);
       const b = parse(importBody, req.body);
       const summary = await tx(async (c) => {
-        const people = (await c.query("SELECT id, name FROM people WHERE user_id=$1", [userId])).rows as { id: number; name: string }[];
-        const byName = (n: string) => people.find((p) => p.name.trim().toLowerCase() === n.trim().toLowerCase())?.id;
-        let events = 0;
-        let points = 0;
-        let collected = 0;
-        let suggestions = 0;
-        const skipped: number[] = [];
+        const total = { events: 0, points: 0, collected: 0, suggestions: 0, skipped: [] as number[] };
         for (const ev of b.eventi) {
-          const own = await c.query("SELECT id, event_date FROM events WHERE id=$1 AND user_id=$2", [ev.id, userId]);
-          if (!own.rows[0]) {
-            skipped.push(ev.id);
+          const r1 = await applyScore(c, userId, ev);
+          if (!r1) {
+            total.skipped.push(ev.id);
             continue;
           }
-          const date: string = own.rows[0].event_date;
-          await c.query("DELETE FROM event_points WHERE event_id=$1", [ev.id]);
-          for (const [axis, raw] of Object.entries(ev.punti)) {
-            if (!(AXES as readonly string[]).includes(axis)) continue;
-            const delta = Math.max(-5, Math.min(5, Math.round(raw)));
-            if (delta === 0) continue;
-            await c.query("INSERT INTO event_points (event_id, axis, delta, reason) VALUES ($1,$2,$3,$4)", [
-              ev.id,
-              axis,
-              delta,
-              (ev.motivi[axis] ?? "").slice(0, 300),
-            ]);
-            points += delta;
-          }
-          // Re-importing an event replaces what an earlier import of it produced.
-          await c.query("DELETE FROM item_collects WHERE event_id=$1", [ev.id]);
-          await c.query("DELETE FROM suggestions WHERE event_id=$1 AND done=false", [ev.id]);
-          for (const o of ev.oggetti_raccolti) {
-            const itemId = await ensureItem(c, userId, o.nome, o.categoria, o.sprite);
-            for (const name of o.persone) {
-              const pid = byName(name);
-              if (!pid) continue;
-              await collect(c, itemId, pid, date, ev.id);
-              collected += 1;
-            }
-          }
-          for (const s of ev.suggerimenti) {
-            const pid = byName(s.persona);
-            if (!pid) continue;
-            const itemId = await ensureItem(c, userId, s.oggetto, s.categoria, s.sprite);
-            const dup = await c.query("SELECT 1 FROM suggestions WHERE person_id=$1 AND item_id=$2 AND done=false", [pid, itemId]);
-            if (dup.rows[0]) continue;
-            await c.query("INSERT INTO suggestions (user_id, person_id, item_id, tip, event_id) VALUES ($1,$2,$3,$4,$5)", [
-              userId,
-              pid,
-              itemId,
-              s.consiglio,
-              ev.id,
-            ]);
-            suggestions += 1;
-          }
-          await c.query("UPDATE events SET scored_at = now() WHERE id=$1", [ev.id]);
-          events += 1;
+          total.events += 1;
+          total.points += r1.points;
+          total.collected += r1.collected;
+          total.suggestions += r1.suggestions;
         }
-        return { events, points, collected, suggestions, skipped };
+        return total;
       });
       res.json(summary);
+    }),
+  );
+
+  // Automatic scoring with the Claude API (needs ANTHROPIC_API_KEY on the server).
+  r.get(
+    "/config",
+    h(async (_req, res) => {
+      res.json({ autoScoring: autoScoringEnabled() });
+    }),
+  );
+
+  r.post(
+    "/events/:id/score",
+    h(async (req, res) => {
+      const userId = uid(req);
+      const id = parse(idParam, req.params.id);
+      const b = parse(z.object({ includePrivate: z.boolean().default(false) }), req.body ?? {});
+      if (!autoScoringEnabled()) throw new HttpError(400, "La valutazione automatica non è attiva (manca la chiave API).");
+      const result = await scoreEvent(userId, id, b.includePrivate);
+      res.json(result);
     }),
   );
 

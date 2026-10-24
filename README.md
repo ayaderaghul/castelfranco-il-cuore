@@ -31,4 +31,5 @@ npm run build && npm start                   # produzione
 - **Cuori (calore)**: outrovert + intimate + cuisine degli eventi con quella persona; ogni punto dura 30 giorni, sbiadisce negli ultimi 7.
 - **Igiene**: doccia 1/giorno, capelli 1 ogni 2 giorni, denti 3/giorno. Quello che manca passa al periodo dopo (al massimo un periodo in più).
 - **Faccende**: scopa, mocio, piante, bagno 1/settimana (lun–dom); se salti, la settimana dopo vale ×2.
-- **Ciclo con Claude**: esporta gli eventi non valutati in JSON, dalli a Claude col prompt dell'app, ricarica la risposta: punti, oggetti raccolti e suggerimenti.
+- **Ciclo con Claude**: con `ANTHROPIC_API_KEY` impostata sul server, ogni evento salvato viene valutato in automatico da Claude Haiku (`ANTHROPIC_MODEL` per cambiare modello). Gli eventi privati partono solo se li invii tu dalla pagina Eventi. Senza chiave resta il copia e incolla: esporta il JSON, dallo a Claude col prompt dell'app, ricarica la risposta.
+- **Eliminare un evento** annulla i suoi punti, gli oggetti raccolti e i suggerimenti che aveva generato.

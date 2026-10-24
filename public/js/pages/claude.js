@@ -40,6 +40,8 @@ Rispondi SOLO con un JSON valido in questo formato, senza testo prima o dopo:
 const axisColor = Object.fromEntries(AXES.map((a) => [a.key, a.c]));
 
 export async function claudePage(view) {
+  const { autoScoring } = await api('/config');
+  let busy = '';
   let includePrivate = false;
   let preview = null;
   let parseError = '';
@@ -52,6 +54,14 @@ export async function claudePage(view) {
           <h1 style="color:var(--violet)">CICLO CON CLAUDE</h1>
         </div>
         <div class="wrap">
+          ${autoScoring
+            ? html`<div class="panel callout" style="border-color:var(--violet)">
+                <h2 style="color:var(--violet)">VALUTAZIONE AUTOMATICA ATTIVA</h2>
+                <span class="small soft">Ogni evento che salvi viene valutato da Claude da solo. Gli eventi privati restano fuori, a meno che tu non li invii dalla pagina Eventi.</span>
+                <button type="button" class="btn violet" data-score-all ${busy ? 'disabled' : ''}>${busy || 'VALUTA GLI EVENTI IN SOSPESO'}</button>
+              </div>
+              <h2 class="section-label">OPPURE A MANO</h2>`
+            : html`<div class="small muted">La valutazione automatica non è attiva: aggiungi la chiave API su Render (ANTHROPIC_API_KEY). Intanto puoi usare il copia e incolla.</div>`}
           <div class="panel">
             <div class="row"><span class="btn gold small-btn" aria-hidden="true">1</span><span class="px" style="font-size:9px">SCARICA GLI EVENTI</span></div>
             <span class="small soft">Solo quelli non ancora valutati.</span>
@@ -117,6 +127,30 @@ export async function claudePage(view) {
   });
 
   view.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-score-all]') && !busy) {
+      const { events } = await api('/events');
+      const todo = events.filter((ev) => !ev.scored_at && !ev.is_private);
+      if (!todo.length) {
+        toast('Nessun evento in sospeso.');
+        return;
+      }
+      let ok = 0;
+      for (const [i, ev] of todo.entries()) {
+        busy = `VALUTO ${i + 1}/${todo.length}…`;
+        draw();
+        try {
+          await api(`/events/${ev.id}/score`, { method: 'POST', body: {} });
+          ok += 1;
+        } catch (err) {
+          toast(err.message, true);
+          if (err.status === 400 || err.status === 429) break;
+        }
+      }
+      busy = '';
+      draw();
+      toast(`Valutati ${ok} eventi su ${todo.length}.`);
+      return;
+    }
     if (e.target.closest('[data-export]')) {
       const data = await api(`/claude/export${includePrivate ? '?private=1' : ''}`);
       if (data.eventi.length === 0) {

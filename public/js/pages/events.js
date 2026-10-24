@@ -12,7 +12,8 @@ const WHEN = [
 ];
 
 export async function eventPage(view, { params }) {
-  const [peopleData, coll] = await Promise.all([api('/people'), api('/collection')]);
+  const [peopleData, coll, config] = await Promise.all([api('/people'), api('/collection'), api('/config')]);
+  const auto = config.autoScoring;
   const people = peopleData.people;
   const items = coll.categories.flatMap((c) => c.items.map((i) => ({ ...i, cat: c.name })));
   const preset = params.get('persona');
@@ -68,11 +69,14 @@ export async function eventPage(view, { params }) {
             <button type="button" class="btn ${st.priv ? 'blue' : ''}" data-priv aria-pressed="${st.priv}">${st.priv ? 'ON' : 'OFF'}</button>
           </div>
 
-          <div class="tiny muted" style="text-align:center">I punti non li scegli qui: li propone Claude.</div>
-          <div class="row">
-            <button class="btn" type="submit" data-go="diario" style="flex:1">SALVA</button>
-            <button class="btn gold" type="submit" data-go="claude" style="flex:1.4">SALVA + CLAUDE</button>
-          </div>
+          ${auto
+            ? html`<div class="tiny muted" style="text-align:center">${st.priv ? 'Evento privato: non viene inviato a Claude.' : 'Appena salvi, Claude assegna i punti da solo.'}</div>
+                <button class="btn gold big" type="submit" data-go="eventi">SALVA</button>`
+            : html`<div class="tiny muted" style="text-align:center">I punti non li scegli qui: li propone Claude.</div>
+                <div class="row">
+                  <button class="btn" type="submit" data-go="eventi" style="flex:1">SALVA</button>
+                  <button class="btn gold" type="submit" data-go="claude" style="flex:1.4">SALVA + CLAUDE</button>
+                </div>`}
         </form>`,
     );
 
@@ -107,7 +111,7 @@ export async function eventPage(view, { params }) {
   view.addEventListener('submit', async (e) => {
     e.preventDefault();
     readForm();
-    const go = e.submitter?.dataset.go ?? 'diario';
+    const go = e.submitter?.dataset.go ?? 'eventi';
     if (!st.what.trim()) {
       toast('Scrivi cosa è successo.', true);
       return;
@@ -130,7 +134,7 @@ export async function eventPage(view, { params }) {
           is_private: st.priv,
         },
       });
-      toast('Evento salvato.');
+      toast(auto && !st.priv ? 'Evento salvato. Claude lo sta valutando…' : 'Evento salvato.');
       location.hash = `#/${go}`;
     } catch (err) {
       toast(err.message, true);
@@ -145,6 +149,33 @@ const axisName = Object.fromEntries(AXES.map((a) => [a.key, a.name.replace(' poi
 
 export async function diaryPage(view) {
   let data = await api('/events');
+  const scoring = new Set(); // events being scored right now from this page
+  let polls = 0;
+
+  // Saved in the last 2 minutes and not scored yet: the server is still working on it.
+  const isPending = (ev) =>
+    data.autoScoring && !ev.scored_at && !ev.score_error && !ev.is_private && Date.now() - Date.parse(ev.created_at) < 120000;
+  const status = (ev) => {
+    if (ev.scored_at) return 'nessun punto';
+    if (scoring.has(ev.id)) return 'Claude sta valutando…';
+    if (ev.is_private) return data.autoScoring ? 'privato · non inviato a Claude' : 'privato';
+    if (ev.score_error) return 'valutazione non riuscita';
+    if (isPending(ev)) return 'Claude sta valutando…';
+    return 'da valutare con Claude';
+  };
+
+  // While the server scores freshly saved events in the background, refresh every few seconds.
+  const poll = () => {
+    if (!view.isConnected || polls > 20) return;
+    if (!data.events.some(isPending)) return;
+    polls += 1;
+    setTimeout(async () => {
+      if (!view.isConnected) return;
+      data = await api('/events');
+      draw();
+      poll();
+    }, 3000);
+  };
 
   const draw = () =>
     mount(
@@ -173,7 +204,13 @@ export async function diaryPage(view) {
                   ? ev.points.map(
                       (pt) => html`<span class="chip static" title="${pt.reason}" style="border-color:${axisColor[pt.axis] ?? '#A8A3C2'};color:${axisColor[pt.axis] ?? '#A8A3C2'}">${pt.delta > 0 ? '+' : ''}${pt.delta} ${axisName[pt.axis] ?? pt.axis}</span>`,
                     )
-                  : html`<span class="tiny muted">${ev.scored_at ? 'nessun punto' : 'da valutare con Claude'}</span>`}
+                  : html`<span class="tiny muted">${status(ev)}</span>`}
+              </div>
+              ${ev.score_error && !ev.scored_at ? html`<div class="err-text small">Claude: ${ev.score_error}</div>` : ''}
+              <div class="row wrap-row">
+                ${data.autoScoring && !scoring.has(ev.id) && !isPending(ev)
+                  ? html`<button type="button" class="btn small-btn" data-score="${ev.id}" data-private="${ev.is_private}" style="border-color:var(--violet);color:var(--violet)">${ev.scored_at ? 'RIVALUTA' : ev.is_private ? 'INVIA A CLAUDE' : ev.score_error ? 'RIPROVA' : 'VALUTA ORA'}</button>`
+                  : ''}
                 <button type="button" class="btn danger small-btn" style="margin-left:auto" data-del="${ev.id}">ELIMINA</button>
               </div>
             </div>`,
@@ -182,6 +219,32 @@ export async function diaryPage(view) {
     );
 
   view.addEventListener('click', async (e) => {
+    const sc = e.target.closest('[data-score]');
+    if (sc) {
+      const id = Number(sc.dataset.score);
+      const priv = sc.dataset.private === 'true';
+      if (priv) {
+        const ok = await modal(
+          html`<h2>INVIARE A CLAUDE UN EVENTO PRIVATO?</h2>
+            <p class="small soft">Il testo dell’evento va all’API di Claude per essere valutato.</p>
+            <div class="row"><button type="button" class="btn" data-close>ANNULLA</button><button type="button" class="btn violet" data-ok>INVIA</button></div>`,
+          (m, close) => m.querySelector('[data-ok]').addEventListener('click', () => close(true)),
+        );
+        if (!ok) return;
+      }
+      scoring.add(id);
+      draw();
+      try {
+        const r = await api(`/events/${id}/score`, { method: 'POST', body: { includePrivate: priv } });
+        toast(`Valutato: ${r.points > 0 ? '+' : ''}${r.points} punti, ${r.collected} oggetti, ${r.suggestions} suggerimenti.`);
+      } catch (err) {
+        toast(err.message, true);
+      }
+      scoring.delete(id);
+      data = await api('/events');
+      draw();
+      return;
+    }
     const d = e.target.closest('[data-del]');
     if (!d) return;
     const ev = data.events.find((x) => String(x.id) === d.dataset.del);
@@ -208,4 +271,5 @@ export async function diaryPage(view) {
   });
 
   draw();
+  poll();
 }
