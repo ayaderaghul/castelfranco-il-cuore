@@ -241,9 +241,10 @@ const SOURCES: Record<NewsTab, { name: string; load: () => Promise<NewsItem[]> }
     { name: "Google News", load: () => rss(googleNews('"Castelfranco Veneto"'), "") },
   ],
   vietnam: [
+    // VnExpress publishes plain RSS that servers can read; GDELT/Google often refuse cloud IPs.
+    { name: "VnExpress thời sự", load: () => rss("https://vnexpress.net/rss/thoi-su.rss", "VnExpress") },
+    { name: "VnExpress tin mới", load: () => rss("https://vnexpress.net/rss/tin-moi-nhat.rss", "VnExpress") },
     { name: "GDELT", load: () => gdelt("vietnam sourcelang:italian") },
-    { name: "GDELT (en)", load: () => gdelt("vietnam sourcelang:english") },
-    { name: "Google News", load: () => rss(googleNews("Vietnam"), "") },
     { name: "ANSA mondo", load: () => rss(`${ANSA}/sito/notizie/mondo/mondo_rss.xml`, "ANSA", mentionsVietnam) },
   ],
 };
