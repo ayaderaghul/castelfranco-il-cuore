@@ -1,0 +1,194 @@
+import { api, html, mount, toast, confirmBox, fmtDate, todayRome, relative } from '../util.js';
+import { sprite, CATEGORY_COLOR } from '../sprites.js';
+import { AXES } from './profile.js';
+
+const WHEN = [
+  ['oggi', 'oggi'],
+  ['ieri', 'ieri'],
+  ['giorni', 'qualche giorno fa'],
+  ['settimane', 'settimane fa'],
+  ['tempo_fa', 'tempo fa'],
+  ['esatta', 'data esatta…'],
+];
+
+export async function eventPage(view, { params }) {
+  const [peopleData, coll] = await Promise.all([api('/people'), api('/collection')]);
+  const people = peopleData.people;
+  const items = coll.categories.flatMap((c) => c.items.map((i) => ({ ...i, cat: c.name })));
+  const preset = params.get('persona');
+  const st = {
+    personIds: new Set(preset ? [Number(preset)] : []),
+    itemIds: new Set(),
+    when: 'oggi',
+    exact: todayRome(),
+    what: '',
+    positive: '',
+    idea: '',
+    priv: false,
+  };
+
+  const draw = () =>
+    mount(
+      view,
+      html`<div class="head">
+          <a class="back" href="#/profilo" aria-label="Indietro">&lt;</a>
+          <h1>NUOVO EVENTO</h1>
+        </div>
+        <form class="wrap" id="f">
+          <div class="field"><span class="field-label">CON CHI</span>
+            <div class="row wrap-row">
+              ${people.length === 0 ? html`<span class="small muted">Nessuna persona ancora. <a href="#/persona/new">Aggiungine una</a>.</span>` : ''}
+              ${people.map(
+                (p) => html`<button type="button" class="chip" data-person="${p.id}" aria-pressed="${st.personIds.has(p.id)}" style="${st.personIds.has(p.id) ? `background:${CATEGORY_COLOR[p.category]};border-color:${CATEGORY_COLOR[p.category]}` : ''}">${p.name}</button>`,
+              )}
+            </div>
+            <span class="tiny muted">Nessuno selezionato = evento da sola (es. lavoro al Nido).</span>
+          </div>
+
+          <div class="field"><span class="field-label">QUANDO</span>
+            <div class="row wrap-row">${WHEN.map(([k, l]) => html`<button type="button" class="chip" data-when="${k}" aria-pressed="${st.when === k}">${l}</button>`)}</div>
+            ${st.when === 'esatta' ? html`<input type="date" name="exact" value="${st.exact}" max="${todayRome()}" aria-label="Data esatta">` : ''}
+          </div>
+
+          <label class="field"><span>COSA È SUCCESSO</span><textarea name="what" rows="5" maxlength="5000">${st.what}</textarea></label>
+          <label class="field"><span>COSA DI POSITIVO HO RICEVUTO</span><textarea name="positive" rows="3" maxlength="3000">${st.positive}</textarea></label>
+          <label class="field"><span>IDEA CON QUESTA PERSONA</span><textarea name="idea" rows="2" maxlength="2000">${st.idea}</textarea></label>
+
+          <div class="field"><span class="field-label">OGGETTI RACCOLTI INSIEME (facoltativo)</span>
+            <div class="row wrap-row">
+              ${items.length === 0 ? html`<span class="small muted">La collezione è vuota: <a href="#/collezione">crea il primo oggetto</a>.</span>` : ''}
+              ${items.map(
+                (i) => html`<button type="button" class="chip" data-item="${i.id}" aria-pressed="${st.itemIds.has(i.id)}">${sprite(i.sprite, 2)} ${i.name}</button>`,
+              )}
+            </div>
+          </div>
+
+          <div class="panel" style="border-color:var(--blue);flex-direction:row;align-items:center">
+            <div style="flex:1"><span class="px" style="font-size:8px;color:var(--blue)">PRIVATO</span><br><span class="small soft">Non viene esportato per Claude, a meno che tu non lo scelga.</span></div>
+            <button type="button" class="btn ${st.priv ? 'blue' : ''}" data-priv aria-pressed="${st.priv}">${st.priv ? 'ON' : 'OFF'}</button>
+          </div>
+
+          <div class="tiny muted" style="text-align:center">I punti non li scegli qui: li propone Claude.</div>
+          <div class="row">
+            <button class="btn" type="submit" data-go="diario" style="flex:1">SALVA</button>
+            <button class="btn gold" type="submit" data-go="claude" style="flex:1.4">SALVA + CLAUDE</button>
+          </div>
+        </form>`,
+    );
+
+  const readForm = () => {
+    const f = view.querySelector('#f');
+    st.what = f.what.value;
+    st.positive = f.positive.value;
+    st.idea = f.idea.value;
+    if (f.exact) st.exact = f.exact.value;
+  };
+
+  view.addEventListener('click', (e) => {
+    const p = e.target.closest('[data-person]');
+    const w = e.target.closest('[data-when]');
+    const i = e.target.closest('[data-item]');
+    const pr = e.target.closest('[data-priv]');
+    if (!p && !w && !i && !pr) return;
+    readForm();
+    if (p) {
+      const id = Number(p.dataset.person);
+      st.personIds.has(id) ? st.personIds.delete(id) : st.personIds.add(id);
+    }
+    if (w) st.when = w.dataset.when;
+    if (i) {
+      const id = Number(i.dataset.item);
+      st.itemIds.has(id) ? st.itemIds.delete(id) : st.itemIds.add(id);
+    }
+    if (pr) st.priv = !st.priv;
+    draw();
+  });
+
+  view.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    readForm();
+    const go = e.submitter?.dataset.go ?? 'diario';
+    if (!st.what.trim()) {
+      toast('Scrivi cosa è successo.', true);
+      return;
+    }
+    if (st.itemIds.size && !st.personIds.size) {
+      toast('Gli oggetti si raccolgono con qualcuno: scegli almeno una persona.', true);
+      return;
+    }
+    try {
+      await api('/events', {
+        method: 'POST',
+        body: {
+          personIds: [...st.personIds],
+          itemIds: [...st.itemIds],
+          when_kind: st.when,
+          exact: st.when === 'esatta' ? st.exact : undefined,
+          what: st.what,
+          positive: st.positive,
+          idea: st.idea,
+          is_private: st.priv,
+        },
+      });
+      toast('Evento salvato.');
+      location.hash = `#/${go}`;
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
+  draw();
+}
+
+const axisColor = Object.fromEntries(AXES.map((a) => [a.key, a.c]));
+const axisName = Object.fromEntries(AXES.map((a) => [a.key, a.name.replace(' point', '')]));
+
+export async function diaryPage(view) {
+  let data = await api('/events');
+
+  const draw = () =>
+    mount(
+      view,
+      html`<div class="head">
+          <a class="back" href="#/profilo" aria-label="Indietro">&lt;</a>
+          <h1>DIARIO</h1>
+          <div class="right"><a class="btn gold small-btn" href="#/evento">+ EVENTO</a></div>
+        </div>
+        <div class="wrap">
+          ${data.events.length === 0 ? html`<div class="empty-state">Ancora nessun evento.</div>` : ''}
+          ${data.events.map(
+            (ev) => html`<div class="panel">
+              <div class="row between">
+                <span class="px" style="font-size:8px">${fmtDate(ev.event_date)}${ev.when_kind !== 'esatta' && ev.when_kind !== 'oggi' && ev.when_kind !== 'ieri' ? ' ~' : ''}</span>
+                <span class="tiny muted">${relative(ev.event_date, !['esatta', 'oggi', 'ieri'].includes(ev.when_kind))}${ev.is_private ? ' · privato' : ''}</span>
+              </div>
+              ${ev.people.length
+                ? html`<div class="row wrap-row">${ev.people.map((p) => html`<span class="chip static" style="border-color:${CATEGORY_COLOR[p.category]};color:${CATEGORY_COLOR[p.category]}">${p.name}</span>`)}</div>`
+                : html`<span class="tiny muted">da sola</span>`}
+              <div style="white-space:pre-wrap">${ev.what}</div>
+              ${ev.positive ? html`<div class="small soft">+ ${ev.positive}</div>` : ''}
+              ${ev.idea ? html`<div class="small gold">▸ ${ev.idea}</div>` : ''}
+              <div class="row wrap-row">
+                ${ev.points.length
+                  ? ev.points.map(
+                      (pt) => html`<span class="chip static" title="${pt.reason}" style="border-color:${axisColor[pt.axis] ?? '#A8A3C2'};color:${axisColor[pt.axis] ?? '#A8A3C2'}">${pt.delta > 0 ? '+' : ''}${pt.delta} ${axisName[pt.axis] ?? pt.axis}</span>`,
+                    )
+                  : html`<span class="tiny muted">${ev.scored_at ? 'nessun punto' : 'da valutare con Claude'}</span>`}
+                <button type="button" class="btn danger small-btn" style="margin-left:auto" data-del="${ev.id}">ELIMINA</button>
+              </div>
+            </div>`,
+          )}
+        </div>`,
+    );
+
+  view.addEventListener('click', async (e) => {
+    const d = e.target.closest('[data-del]');
+    if (!d) return;
+    if (!(await confirmBox('Eliminare questo evento e i suoi punti?', 'ELIMINA'))) return;
+    await api(`/events/${d.dataset.del}`, { method: 'DELETE', body: {} });
+    data = await api('/events');
+    draw();
+  });
+
+  draw();
+}

@@ -1,0 +1,142 @@
+import pg from "pg";
+
+// Keep DATE columns as 'YYYY-MM-DD' strings instead of JS Dates (avoids timezone shifts).
+pg.types.setTypeParser(1082, (v: string) => v);
+
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not set");
+}
+
+export const pool = new pg.Pool({ connectionString, max: 5 });
+
+export async function query<T extends pg.QueryResultRow = any>(text: string, params: unknown[] = []): Promise<T[]> {
+  const res = await pool.query<T>(text, params);
+  return res.rows;
+}
+
+/** Runs fn inside a transaction on a single client, always releasing it. */
+export async function tx<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const out = await fn(client);
+    await client.query("COMMIT");
+    return out;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS invites (
+  id SERIAL PRIMARY KEY,
+  code_hash TEXT UNIQUE NOT NULL,
+  used_by INT REFERENCES users(id) ON DELETE SET NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE IF NOT EXISTS people (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL CHECK (category IN ('amici','famiglia','pro')),
+  city TEXT NOT NULL DEFAULT 'Castelfranco',
+  role TEXT NOT NULL DEFAULT '',
+  level TEXT NOT NULL DEFAULT 'conoscente',
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS people_user_idx ON people(user_id);
+CREATE TABLE IF NOT EXISTS events (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  when_kind TEXT NOT NULL,
+  event_date DATE NOT NULL,
+  what TEXT NOT NULL DEFAULT '',
+  positive TEXT NOT NULL DEFAULT '',
+  idea TEXT NOT NULL DEFAULT '',
+  is_private BOOLEAN NOT NULL DEFAULT false,
+  scored_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS events_user_idx ON events(user_id, event_date);
+CREATE TABLE IF NOT EXISTS event_people (
+  event_id INT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  person_id INT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  PRIMARY KEY (event_id, person_id)
+);
+CREATE TABLE IF NOT EXISTS event_points (
+  id SERIAL PRIMARY KEY,
+  event_id INT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  axis TEXT NOT NULL,
+  delta INT NOT NULL,
+  reason TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS event_points_event_idx ON event_points(event_id);
+CREATE TABLE IF NOT EXISTS item_categories (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  color TEXT NOT NULL DEFAULT '#F2C14E',
+  UNIQUE (user_id, name)
+);
+CREATE TABLE IF NOT EXISTS items (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category_id INT NOT NULL REFERENCES item_categories(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  sprite TEXT NOT NULL DEFAULT 'stella',
+  UNIQUE (user_id, name)
+);
+CREATE TABLE IF NOT EXISTS item_collects (
+  id SERIAL PRIMARY KEY,
+  item_id INT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  person_id INT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  event_id INT REFERENCES events(id) ON DELETE SET NULL,
+  collected_on DATE NOT NULL
+);
+CREATE TABLE IF NOT EXISTS suggestions (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  person_id INT NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  item_id INT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+  tip TEXT NOT NULL DEFAULT '',
+  done BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS hygiene_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day DATE NOT NULL,
+  habit TEXT NOT NULL CHECK (habit IN ('doccia','capelli','denti')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS hygiene_user_day_idx ON hygiene_logs(user_id, day);
+CREATE TABLE IF NOT EXISTS chore_logs (
+  id SERIAL PRIMARY KEY,
+  user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day DATE NOT NULL,
+  chore TEXT NOT NULL CHECK (chore IN ('scopa','mocio','piante','bagno')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS chore_user_day_idx ON chore_logs(user_id, day);
+`;
+
+export async function migrate(): Promise<void> {
+  await pool.query(SCHEMA);
+}
