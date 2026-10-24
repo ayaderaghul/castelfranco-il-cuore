@@ -38,7 +38,14 @@ app.use("/api/auth", authRouter());
 app.use("/api", requireAuth, apiRouter());
 app.use("/api", (_req, res) => res.status(404).json({ error: "Non trovato." }));
 
-app.use(express.static(publicDir, { index: "index.html", maxAge: "1h" }));
+// "no-cache" = the browser keeps the files but asks the server (ETag) every time,
+// so a new deploy shows up on the next reload instead of up to an hour later.
+app.use(
+  express.static(publicDir, {
+    index: "index.html",
+    setHeaders: (res) => res.setHeader("Cache-Control", "no-cache"),
+  }),
+);
 app.get("*", (_req, res) => res.sendFile(path.join(publicDir, "index.html")));
 
 const port = Number(process.env.PORT ?? 3000);
