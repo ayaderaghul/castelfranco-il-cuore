@@ -1,4 +1,5 @@
-import { api, html, mount, raw, todayRome, fmtDate } from '../util.js';
+import { api, html, mount, raw, todayRome, fmtDate, toast } from '../util.js';
+import { sprite } from '../sprites.js';
 
 export const AXES = [
   { key: 'outrovert', name: 'outrovert point', c: '#F28C6B' },
@@ -104,6 +105,15 @@ export async function profilePage(view) {
             )}
           </div>
 
+          <div class="panel">
+            <div class="row between"><h2>RACCOLTI DA SOLA</h2><a class="small" href="#/collezione">collezione</a></div>
+            ${dash.solo.length
+              ? html`<div class="itemrow">${dash.solo.map(
+                  (s) => html`<button type="button" class="tok" title="${s.name} · ${s.n}x" aria-label="${s.name}, ${s.n} volte" data-tip="${s.name} · raccolto da sola ${s.n} ${s.n === 1 ? 'volta' : 'volte'}">${sprite(s.sprite, 3)}<span class="count">${s.n}x</span></button>`,
+                )}</div>`
+              : html`<span class="small muted">Niente ancora. Salva un evento senza persone con un oggetto (es. soldi, meditazione del loto), o raccoglilo dalla collezione.</span>`}
+          </div>
+
           <h2 class="section-label">OBIETTIVI DI VITA</h2>
           <div class="panel" style="border-color:#8FD694">
             <span class="px" style="font-size:9px;color:#8FD694">CITTADINANZA</span>
@@ -174,6 +184,11 @@ export async function profilePage(view) {
     if (t) {
       tab = t.dataset.tab;
       loadNews();
+      return;
+    }
+    const tip = e.target.closest('[data-tip]');
+    if (tip) {
+      toast(tip.dataset.tip);
       return;
     }
     if (e.target.closest('[data-logout]')) {

@@ -54,7 +54,8 @@ export async function eventPage(view, { params }) {
 
           <label class="field"><span>COSA È SUCCESSO</span><textarea name="what" rows="5" maxlength="5000">${st.what}</textarea></label>
           <label class="field"><span>COSA DI POSITIVO HO RICEVUTO</span><textarea name="positive" rows="3" maxlength="3000">${st.positive}</textarea></label>
-          <div class="field"><span class="field-label">OGGETTI RACCOLTI INSIEME (facoltativo)</span>
+          <div class="field"><span class="field-label">OGGETTI RACCOLTI (facoltativo)</span>
+            <span class="tiny muted">Con le persone scelte sopra, oppure da sola se non ne scegli nessuna (es. soldi guadagnati, meditazione del loto).</span>
             <div class="row wrap-row">
               ${items.length === 0 ? html`<span class="small muted">La collezione è vuota: <a href="#/collezione">crea il primo oggetto</a>.</span>` : ''}
               ${items.map(
@@ -128,8 +129,8 @@ export async function eventPage(view, { params }) {
       toast('Scrivi cosa è successo.', true);
       return;
     }
-    if ((st.itemIds.size || st.ideaIds.size) && !st.personIds.size) {
-      toast('Oggetti e idee vanno con qualcuno: scegli almeno una persona.', true);
+    if (st.ideaIds.size && !st.personIds.size) {
+      toast('Le idee vanno con qualcuno: scegli almeno una persona.', true);
       return;
     }
     try {

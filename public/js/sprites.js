@@ -29,6 +29,7 @@ const S = {
   fiume: { rows: ['GGGGGGGG', 'GGTGGGTG', 'BBWBBBBB', 'BBBBBWBB', 'BWBBBBBB', 'GGGGGTGG', 'GTGGGGGG', 'GGGGGGGG'], pal: { G: '#3E7C4A', T: '#2E5E38', B: '#2A6F97', W: '#7FB3E6' } },
   fiore: { rows: ['..P.P...', '.PPPPP..', 'PPPYPPP.', '.PPPPP..', '..P.P...', '...G....', '..GGL...', '...G....'], pal: { P: '#F7A8C4', Y: '#F2C14E', G: '#3E7C4A', L: '#5FA864' } },
   dottore: { rows: ['WWWWWWWW', 'WWWRRWWW', 'WWWRRWWW', 'WRRRRRRW', 'WRRRRRRW', 'WWWRRWWW', 'WWWRRWWW', 'WWWWWWWW'], pal: { W: '#F4EBD0', R: '#D7263D' } },
+  soldi: { rows: ['..YDYY..', '.YDDDDY.', 'YYDDYYYY', 'YYDDDDYY', 'YYYDYDYY', '.YDDDDY.', '..YDYY..', '........'], pal: { Y: '#F2C14E', D: '#7A5A10' } },
   stella: { rows: ['...Y....', '...Y....', 'YYYYYYY.', '..YYY...', '..YYY...', '.YY.YY..', 'YY...YY.', '........'], pal: { Y: '#F2C14E' } },
 };
 
@@ -37,7 +38,7 @@ export const SPRITE_NAMES = {
   spritz: 'aperitivo', monte: 'montagna', scarpa: 'camminata', giornale: 'giornale', chiacchiera: 'chiacchiera',
   gnomo: 'gnomo', regalo: 'regalo', loto: 'loto', sole: 'sole', libro: 'libro', pianta: 'pianta', stella: 'stella',
   pizza: 'pizza', tiramisu: 'tiramisù', manzo_ananas: 'manzo all’ananas', maiale_mango: 'maiale al mango', involtini: 'involtini di gamberi',
-  rosa: 'rosa · intimità', palestra: 'palestra', fiume: 'fiume · Musone', fiore: 'fiore', dottore: 'dottore',
+  rosa: 'rosa · intimità', palestra: 'palestra', fiume: 'fiume · Musone', fiore: 'fiore', dottore: 'dottore', soldi: 'soldi',
 };
 
 function svgFrom(rows, pal, px, label) {

@@ -23,7 +23,7 @@ export async function collectionPage(view) {
           <div class="right"><span class="small muted">${total()} oggetti</span><button type="button" class="btn gold small-btn" data-add-item>+ OGGETTO</button></div>
         </div>
         <div class="wrap">
-          <div class="small muted">Le cose che sai fare tu. Trova un momento per farle con qualcuno: l’oggetto finisce nella sua scheda.</div>
+          <div class="small muted">Le cose che sai fare tu. Falle con qualcuno (l’oggetto finisce nella sua scheda) o da sola (compare come TU e sul profilo).</div>
           <div class="row wrap-row tiny soft">
             <span class="row" style="gap:4px"><span class="tag done"></span>fatto con</span>
             <span class="row" style="gap:4px"><span class="tag plan"></span>da fare con</span>
@@ -44,7 +44,7 @@ export async function collectionPage(view) {
                     <span class="info">
                       <span style="font-size:18px;line-height:1">${i.name}</span>
                       <span class="row wrap-row" style="gap:3px">
-                        ${i.collected.map((x) => html`<span class="tag done" title="fatto con ${x.name} · ${x.n}x">${short(x.name)}${x.n > 1 ? `·${x.n}` : ''}</span>`)}
+                        ${i.collected.map((x) => html`<span class="tag done" title="${x.person_id === null ? 'da sola' : `fatto con ${x.name}`} · ${x.n}x">${x.person_id === null ? 'TU' : short(x.name)}${x.n > 1 ? `·${x.n}` : ''}</span>`)}
                         ${i.planned.map((x) => html`<span class="tag plan" title="da fare con ${x.name}">${short(x.name)}</span>`)}
                         ${!i.collected.length && !i.planned.length ? html`<span class="tag solo">SOLO TUO</span>` : ''}
                       </span>
@@ -139,21 +139,23 @@ export async function collectionPage(view) {
       html`<h2>${item.name.toUpperCase()}</h2>
         <div class="row" style="margin-bottom:8px">${sprite(item.sprite, 6)}
           <div class="small soft">
-            ${item.collected.length ? item.collected.map((x) => html`<div>✓ con ${x.name} · ${x.n}x</div>`) : html`<div>Ancora non fatto con nessuno.</div>`}
+            ${item.collected.length
+              ? item.collected.map((x) => html`<div>✓ ${x.person_id === null ? 'da sola' : `con ${x.name}`} · ${x.n}x</div>`)
+              : html`<div>Ancora non raccolto.</div>`}
             ${item.planned.map((x) => html`<div class="gold">▸ da fare con ${x.name}${x.tip ? ` — ${x.tip}` : ''}</div>`)}
           </div>
         </div>
-        ${people.length === 0
-          ? html`<p class="small muted">Aggiungi prima delle persone per raccoglierlo con qualcuno.</p>`
-          : html`<form data-f="collect">
-              <label class="field"><span>FATTO OGGI CON</span><select name="person">${opts}</select></label>
-              <button class="btn green" type="submit">RACCOGLI +1</button>
-            </form>
-            <form data-f="plan" style="margin-top:12px">
+        <form data-f="collect">
+          <label class="field"><span>FATTO OGGI</span><select name="person"><option value="">da sola</option>${opts}</select></label>
+          <button class="btn green" type="submit">RACCOGLI +1</button>
+        </form>
+        ${people.length
+          ? html`<form data-f="plan" style="margin-top:12px">
               <label class="field"><span>PIANIFICA CON</span><select name="person">${opts}</select></label>
               <label class="field"><span>CONSIGLIO</span><input type="text" name="tip" maxlength="500" placeholder="es. Fissate la data per Natale"></label>
               <button class="btn" type="submit" style="border-color:var(--gold);color:var(--gold)">AGGIUNGI AI “DA RACCOGLIERE”</button>
-            </form>`}
+            </form>`
+          : ''}
         <div class="row" style="margin-top:12px"><button type="button" class="btn" data-close>CHIUDI</button><button type="button" class="btn danger" data-v="del">ELIMINA OGGETTO</button></div>`,
       (d, close) => {
         d.addEventListener('click', (e) => {
@@ -162,7 +164,7 @@ export async function collectionPage(view) {
         d.querySelectorAll('form').forEach((f) =>
           f.addEventListener('submit', (e) => {
             e.preventDefault();
-            close({ kind: f.dataset.f, personId: Number(f.person.value), tip: f.tip?.value ?? '' });
+            close({ kind: f.dataset.f, personId: f.person.value ? Number(f.person.value) : null, tip: f.tip?.value ?? '' });
           }),
         );
       },
@@ -171,7 +173,7 @@ export async function collectionPage(view) {
     try {
       if (res.kind === 'collect') {
         await api(`/items/${id}/collect`, { method: 'POST', body: { personId: res.personId } });
-        toast('Raccolto!');
+        toast(res.personId === null ? 'Raccolto da sola!' : 'Raccolto!');
       } else if (res.kind === 'plan') {
         await api('/suggestions', { method: 'POST', body: { personId: res.personId, itemId: id, tip: res.tip } });
         toast('Aggiunto ai “da raccogliere”.');

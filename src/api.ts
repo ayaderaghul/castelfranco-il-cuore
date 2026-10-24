@@ -31,7 +31,7 @@ export const SPRITES = [
   "macchiato", "cornetto", "piatto", "miele", "costine", "pho", "spritz", "monte", "scarpa",
   "giornale", "chiacchiera", "gnomo", "regalo", "loto", "sole", "libro", "pianta", "stella",
   "pizza", "tiramisu", "manzo_ananas", "maiale_mango", "involtini",
-  "rosa", "palestra", "fiume", "fiore", "dottore",
+  "rosa", "palestra", "fiume", "fiore", "dottore", "soldi",
 ] as const;
 
 type Handler = (req: Request, res: Response) => Promise<void>;
@@ -75,14 +75,17 @@ async function ownedIds(c: PoolClient | null, table: "people" | "items", userId:
   return rows.map((r: { id: number }) => r.id);
 }
 
-async function collect(c: PoolClient, itemId: number, personId: number, day: string, eventId: number | null): Promise<void> {
+/** personId null = collected alone ("da sola"). */
+async function collect(c: PoolClient, itemId: number, personId: number | null, day: string, eventId: number | null): Promise<void> {
   await c.query("INSERT INTO item_collects (item_id, person_id, event_id, collected_on) VALUES ($1, $2, $3, $4)", [
     itemId,
     personId,
     eventId,
     day,
   ]);
-  await c.query("UPDATE suggestions SET done = true WHERE item_id = $1 AND person_id = $2 AND done = false", [itemId, personId]);
+  if (personId !== null) {
+    await c.query("UPDATE suggestions SET done = true WHERE item_id = $1 AND person_id = $2 AND done = false", [itemId, personId]);
+  }
 }
 
 // ---------- goals (hygiene + chores) ----------
@@ -301,7 +304,12 @@ export function apiRouter(): Router {
           }),
           { done: 0, target: 0 },
         );
-      res.json({ today: todayRome(), axes: totals, ...counts[0], hygiene: sum(hy.goals), chores: sum(ch.goals) });
+      const solo = await query(
+        `SELECT i.id, i.name, i.sprite, count(*)::int AS n FROM item_collects ic JOIN items i ON i.id = ic.item_id
+         WHERE i.user_id = $1 AND ic.person_id IS NULL GROUP BY i.id, i.name, i.sprite ORDER BY count(*) DESC, i.name`,
+        [userId],
+      );
+      res.json({ today: todayRome(), axes: totals, ...counts[0], hygiene: sum(hy.goals), chores: sum(ch.goals), solo });
     }),
   );
 
@@ -480,7 +488,11 @@ export function apiRouter(): Router {
               [userId, p, it, eventId],
             );
           }
-        for (const it of items) for (const p of people) await collect(c, it, p, date, eventId);
+        // With people: collected together with each of them. With nobody: collected alone.
+        for (const it of items) {
+          if (people.length === 0) await collect(c, it, null, date, eventId);
+          else for (const p of people) await collect(c, it, p, date, eventId);
+        }
         return eventId;
       });
       // Score in the background so saving stays instant; private events are never sent automatically.
@@ -517,10 +529,11 @@ export function apiRouter(): Router {
       const userId = uid(req);
       const cats = await query("SELECT id, name, color FROM item_categories WHERE user_id=$1 ORDER BY id", [userId]);
       const items = await query("SELECT id, category_id, name, sprite FROM items WHERE user_id=$1 ORDER BY id", [userId]);
-      const collects = await query<{ item_id: number; person_id: number; name: string; category: string; n: number }>(
-        `SELECT ic.item_id, p.id AS person_id, p.name, p.category, count(*)::int AS n
-         FROM item_collects ic JOIN people p ON p.id = ic.person_id JOIN items i ON i.id = ic.item_id
-         WHERE i.user_id = $1 GROUP BY ic.item_id, p.id, p.name, p.category ORDER BY p.name`,
+      // person_id NULL rows are things collected alone: shown as "Tu".
+      const collects = await query<{ item_id: number; person_id: number | null; name: string; category: string | null; n: number }>(
+        `SELECT ic.item_id, p.id AS person_id, COALESCE(p.name, 'Tu') AS name, p.category, count(*)::int AS n
+         FROM item_collects ic LEFT JOIN people p ON p.id = ic.person_id JOIN items i ON i.id = ic.item_id
+         WHERE i.user_id = $1 GROUP BY ic.item_id, p.id, p.name, p.category ORDER BY p.id NULLS FIRST, p.name`,
         [userId],
       );
       const plans = await query<{ id: number; item_id: number; person_id: number; name: string; tip: string }>(
@@ -607,11 +620,14 @@ export function apiRouter(): Router {
     h(async (req, res) => {
       const userId = uid(req);
       const itemId = parse(idParam, req.params.id);
-      const b = parse(z.object({ personId: z.number().int().positive() }), req.body);
+      // personId null = collected alone today.
+      const b = parse(z.object({ personId: z.number().int().positive().nullable() }), req.body);
       await tx(async (c) => {
         const [it] = await ownedIds(c, "items", userId, [itemId]);
+        if (!it) throw new HttpError(404, "Non trovato.");
+        if (b.personId === null) return collect(c, it, null, todayRome(), null);
         const [p] = await ownedIds(c, "people", userId, [b.personId]);
-        if (!it || !p) throw new HttpError(404, "Non trovato.");
+        if (!p) throw new HttpError(404, "Non trovato.");
         await collect(c, it, p, todayRome(), null);
       });
       res.json({ ok: true });
