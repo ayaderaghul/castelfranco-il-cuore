@@ -28,6 +28,7 @@ import { askClaudeToScore, autoScoringEnabled } from "./claude.js";
 export const SPRITES = [
   "macchiato", "cornetto", "piatto", "miele", "costine", "pho", "spritz", "monte", "scarpa",
   "giornale", "chiacchiera", "gnomo", "regalo", "loto", "sole", "libro", "pianta", "stella",
+  "pizza", "tiramisu", "manzo_ananas", "maiale_mango", "involtini",
 ] as const;
 
 type Handler = (req: Request, res: Response) => Promise<void>;
@@ -210,7 +211,7 @@ async function applyScore(c: PoolClient, userId: number, ev: ScoredEvent) {
     points += delta;
   }
   await c.query("DELETE FROM item_collects WHERE event_id=$1", [ev.id]);
-  await c.query("DELETE FROM suggestions WHERE event_id=$1 AND done=false", [ev.id]);
+  await c.query("DELETE FROM suggestions WHERE event_id=$1 AND done=false AND source='claude'", [ev.id]);
   for (const o of ev.oggetti_raccolti) {
     const itemId = await ensureItem(c, userId, o.nome, o.categoria, o.sprite);
     for (const name of o.persone) {
@@ -446,6 +447,7 @@ export function apiRouter(): Router {
     idea: z.string().max(2000).default(""),
     is_private: z.boolean().default(false),
     itemIds: z.array(z.number().int().positive()).max(30).default([]),
+    ideaItemIds: z.array(z.number().int().positive()).max(30).default([]),
   });
 
   r.get(
@@ -482,13 +484,31 @@ export function apiRouter(): Router {
       const id = await tx(async (c) => {
         const people = await ownedIds(c, "people", userId, b.personIds);
         const items = await ownedIds(c, "items", userId, b.itemIds);
+        const ideas = await ownedIds(c, "items", userId, b.ideaItemIds);
+        // Keep a readable text of the picked ideas on the event (shown in the list and sent to Claude).
+        const ideaNames = ideas.length
+          ? ((await c.query("SELECT name FROM items WHERE id = ANY($1::int[]) ORDER BY name", [ideas])).rows as { name: string }[]).map(
+              (r) => r.name,
+            )
+          : [];
+        const ideaText = [ideaNames.length ? `Da fare insieme: ${ideaNames.join(", ")}` : "", b.idea].filter(Boolean).join("\n");
         const ins = await c.query(
           `INSERT INTO events (user_id, when_kind, event_date, what, positive, idea, is_private)
            VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-          [userId, b.when_kind, date, b.what, b.positive, b.idea, b.is_private],
+          [userId, b.when_kind, date, b.what, b.positive, ideaText, b.is_private],
         );
         const eventId: number = ins.rows[0].id;
         for (const p of people) await c.query("INSERT INTO event_people (event_id, person_id) VALUES ($1,$2)", [eventId, p]);
+        // Each picked idea becomes a "da raccogliere" item on every person of the event.
+        for (const it of ideas)
+          for (const p of people) {
+            const dup = await c.query("SELECT 1 FROM suggestions WHERE person_id=$1 AND item_id=$2 AND done=false", [p, it]);
+            if (dup.rows[0]) continue;
+            await c.query(
+              "INSERT INTO suggestions (user_id, person_id, item_id, tip, event_id, source) VALUES ($1,$2,$3,'',$4,'idea')",
+              [userId, p, it, eventId],
+            );
+          }
         for (const it of items) for (const p of people) await collect(c, it, p, date, eventId);
         return eventId;
       });

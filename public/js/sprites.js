@@ -19,6 +19,11 @@ const S = {
   sole: { rows: ['...Y....', '.Y.Y.Y..', '..YYY...', 'YYYOYYY.', '..YYY...', '.Y.Y.Y..', '...Y....', '........'], pal: { Y: '#F2C14E', O: '#F28C6B' } },
   libro: { rows: ['........', '.BBBBBB.', '.BWWWWB.', '.BWLLWB.', '.BWWWWB.', '.BWLLWB.', '.BBBBBB.', '........'], pal: { B: '#7FB3E6', W: '#F4EBD0', L: '#6E6A8E' } },
   pianta: { rows: ['...GG...', '..GGG.G.', '.G.GGGG.', '..GGG...', '...G....', '.TTTTTT.', '..TTTT..', '..TTTT..'], pal: { G: '#8FD694', T: '#C8553D' } },
+  pizza: { rows: ['CCCCCCCC', '.YRYYRY.', '.YYYRYY.', '..YRYY..', '..YYRY..', '...YY...', '...Y....', '........'], pal: { C: '#C9772E', Y: '#F2C14E', R: '#D7263D' } },
+  tiramisu: { rows: ['........', 'DDDDDDDD', 'WWWWWWWW', 'BBBBBBBB', 'WWWWWWWW', 'BBBBBBBB', 'PPPPPPPP', '........'], pal: { D: '#6B3E26', W: '#F4EBD0', B: '#A8743E', P: '#A8A3C2' } },
+  manzo_ananas: { rows: ['........', '...Y....', '..MYMY..', '.MMYMMY.', '.YMMYMM.', 'PPPPPPPP', '.PPPPPP.', '........'], pal: { M: '#7A3B1F', Y: '#F2D13E', P: '#E8E3D0' } },
+  maiale_mango: { rows: ['........', '..O.....', '.KOKKO..', '.KKOKKO.', '.OKKOKK.', 'PPPPPPPP', '.PPPPPP.', '........'], pal: { K: '#D98C6A', O: '#F7A21B', P: '#E8E3D0' } },
+  involtini: { rows: ['........', 'WWWWWWW.', 'WSWGWSW.', 'WWWWWWW.', '........', 'WWWWWWW.', 'WSWGWSW.', 'WWWWWWW.'], pal: { W: '#E9E4D4', S: '#F28C6B', G: '#5FA864' } },
   stella: { rows: ['...Y....', '...Y....', 'YYYYYYY.', '..YYY...', '..YYY...', '.YY.YY..', 'YY...YY.', '........'], pal: { Y: '#F2C14E' } },
 };
 
@@ -26,6 +31,7 @@ export const SPRITE_NAMES = {
   macchiato: 'caffè', cornetto: 'cornetto', piatto: 'piatto', miele: 'miele', costine: 'costine', pho: 'phở',
   spritz: 'aperitivo', monte: 'montagna', scarpa: 'camminata', giornale: 'giornale', chiacchiera: 'chiacchiera',
   gnomo: 'gnomo', regalo: 'regalo', loto: 'loto', sole: 'sole', libro: 'libro', pianta: 'pianta', stella: 'stella',
+  pizza: 'pizza', tiramisu: 'tiramisù', manzo_ananas: 'manzo all’ananas', maiale_mango: 'maiale al mango', involtini: 'involtini di gamberi',
 };
 
 function svgFrom(rows, pal, px, label) {

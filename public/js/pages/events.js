@@ -20,6 +20,7 @@ export async function eventPage(view, { params }) {
   const st = {
     personIds: new Set(preset ? [Number(preset)] : []),
     itemIds: new Set(),
+    ideaIds: new Set(),
     when: 'oggi',
     exact: todayRome(),
     what: '',
@@ -53,13 +54,20 @@ export async function eventPage(view, { params }) {
 
           <label class="field"><span>COSA È SUCCESSO</span><textarea name="what" rows="5" maxlength="5000">${st.what}</textarea></label>
           <label class="field"><span>COSA DI POSITIVO HO RICEVUTO</span><textarea name="positive" rows="3" maxlength="3000">${st.positive}</textarea></label>
-          <label class="field"><span>IDEA CON QUESTA PERSONA</span><textarea name="idea" rows="2" maxlength="2000">${st.idea}</textarea></label>
-
           <div class="field"><span class="field-label">OGGETTI RACCOLTI INSIEME (facoltativo)</span>
             <div class="row wrap-row">
               ${items.length === 0 ? html`<span class="small muted">La collezione è vuota: <a href="#/collezione">crea il primo oggetto</a>.</span>` : ''}
               ${items.map(
                 (i) => html`<button type="button" class="chip" data-item="${i.id}" aria-pressed="${st.itemIds.has(i.id)}">${sprite(i.sprite, 2)} ${i.name}</button>`,
+              )}
+            </div>
+          </div>
+
+          <div class="field"><span class="field-label">IDEE PER QUESTA PERSONA</span>
+            <span class="tiny muted">Diventano “da raccogliere” sulla scheda di chi hai scelto sopra.</span>
+            <div class="row wrap-row">
+              ${items.map(
+                (i) => html`<button type="button" class="chip idea" data-idea="${i.id}" aria-pressed="${st.ideaIds.has(i.id)}">${sprite(i.sprite, 2)} ${i.name}</button>`,
               )}
             </div>
           </div>
@@ -84,7 +92,6 @@ export async function eventPage(view, { params }) {
     const f = view.querySelector('#f');
     st.what = f.what.value;
     st.positive = f.positive.value;
-    st.idea = f.idea.value;
     if (f.exact) st.exact = f.exact.value;
   };
 
@@ -93,7 +100,8 @@ export async function eventPage(view, { params }) {
     const w = e.target.closest('[data-when]');
     const i = e.target.closest('[data-item]');
     const pr = e.target.closest('[data-priv]');
-    if (!p && !w && !i && !pr) return;
+    const id2 = e.target.closest('[data-idea]');
+    if (!p && !w && !i && !pr && !id2) return;
     readForm();
     if (p) {
       const id = Number(p.dataset.person);
@@ -103,6 +111,10 @@ export async function eventPage(view, { params }) {
     if (i) {
       const id = Number(i.dataset.item);
       st.itemIds.has(id) ? st.itemIds.delete(id) : st.itemIds.add(id);
+    }
+    if (id2) {
+      const id = Number(id2.dataset.idea);
+      st.ideaIds.has(id) ? st.ideaIds.delete(id) : st.ideaIds.add(id);
     }
     if (pr) st.priv = !st.priv;
     draw();
@@ -116,8 +128,8 @@ export async function eventPage(view, { params }) {
       toast('Scrivi cosa è successo.', true);
       return;
     }
-    if (st.itemIds.size && !st.personIds.size) {
-      toast('Gli oggetti si raccolgono con qualcuno: scegli almeno una persona.', true);
+    if ((st.itemIds.size || st.ideaIds.size) && !st.personIds.size) {
+      toast('Oggetti e idee vanno con qualcuno: scegli almeno una persona.', true);
       return;
     }
     try {
@@ -130,7 +142,7 @@ export async function eventPage(view, { params }) {
           exact: st.when === 'esatta' ? st.exact : undefined,
           what: st.what,
           positive: st.positive,
-          idea: st.idea,
+          ideaItemIds: [...st.ideaIds],
           is_private: st.priv,
         },
       });

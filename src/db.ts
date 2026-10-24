@@ -122,6 +122,8 @@ CREATE TABLE IF NOT EXISTS suggestions (
 -- Suggestions created by a Claude import belong to that event and disappear with it.
 ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS event_id INT REFERENCES events(id) ON DELETE CASCADE;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS score_error TEXT;
+-- 'claude' = proposed by Claude (replaced on re-scoring); 'idea' = picked by me in the event form.
+ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'claude';
 CREATE TABLE IF NOT EXISTS hygiene_logs (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

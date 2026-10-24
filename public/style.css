@@ -77,6 +77,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 2px solid var(--line); color: var(--soft); background: transparent; cursor: pointer; font-size: 18px; min-height: 34px; }
 .chip[aria-pressed="true"] { background: var(--gold); color: var(--bg); border-color: var(--gold); }
 .chip.static { cursor: default; min-height: 0; }
+.chip.idea { border-style: dashed; }
+.chip.idea[aria-pressed="true"] { background: transparent; color: var(--gold); border-color: var(--gold); }
 
 label.field { display: flex; flex-direction: column; gap: 4px; }
 label.field > span, .field-label { font-family: var(--pixel); font-size: 8px; color: var(--muted); }
