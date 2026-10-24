@@ -102,3 +102,24 @@ test("hearts are weighted by relationship", () => {
   assert.equal(warmth(dinner, "2026-10-24", HEART_WEIGHT.famiglia).hearts, 5);
   assert.equal(warmth([{ event_date: "2026-10-24", delta: 1 }], "2026-10-24", HEART_WEIGHT.amici).hearts, 1);
 });
+
+import { parseGdelt, parseRss, symbolToCode } from "./feeds.js";
+
+test("feeds: ANSA-style RSS, GDELT JSON and met.no symbols parse", () => {
+  const xml = `<?xml version="1.0"?><rss><channel><title>ANSA</title>
+    <item><title><![CDATA[Vertice Ue a Bruxelles &amp; accordo]]></title><link>https://www.ansa.it/a.html</link><pubDate>Sat, 24 Oct 2026 18:00:00 +0200</pubDate></item>
+    <item><title>Titolo - Corriere</title><source url="x">Corriere</source><link>javascript:alert(1)</link></item>
+  </channel></rss>`;
+  const items = parseRss(xml, "ANSA");
+  assert.equal(items.length, 2);
+  assert.equal(items[0].title, "Vertice Ue a Bruxelles & accordo");
+  assert.equal(items[0].source, "ANSA");
+  assert.equal(items[1].title, "Titolo");
+  assert.equal(items[1].link, ""); // non-http links are dropped
+  const g = parseGdelt({ articles: [{ url: "https://x.it/v", title: "Vietnam, tifone", domain: "x.it", seendate: "20261024T120000Z" }] });
+  assert.deepEqual(g[0], { title: "Vietnam, tifone", source: "x.it", link: "https://x.it/v", date: "20261024T120000Z" });
+  assert.equal(symbolToCode("lightrainshowers_day"), 80);
+  assert.equal(symbolToCode("clearsky_night"), 0);
+  assert.equal(symbolToCode("heavyrainandthunder"), 95);
+  assert.equal(symbolToCode("fog"), 45);
+});

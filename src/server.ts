@@ -5,6 +5,7 @@ import helmet from "helmet";
 import { migrate } from "./db.js";
 import { authRouter, loadSession, requireAppHeader, requireAuth } from "./auth.js";
 import { apiRouter } from "./api.js";
+import { warmFeeds } from "./feeds.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(here, "..", "public");
@@ -58,7 +59,10 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 const port = Number(process.env.PORT ?? 3000);
 migrate()
   .then(() => {
-    app.listen(port, () => console.log(`Castelfranco il cuore on :${port}`));
+    app.listen(port, () => {
+      console.log(`Castelfranco il cuore on :${port}`);
+      void warmFeeds();
+    });
   })
   .catch((err) => {
     console.error("Migration failed", err);

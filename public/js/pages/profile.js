@@ -44,7 +44,7 @@ const NEWS_TABS = [
   ['vietnam', 'VIETNAM'],
   ['italia', 'ITALIA'],
   ['europa', 'EUROPA'],
-  ['castelfranco', 'CASTELF.'],
+  ['veneto', 'VENETO'],
 ];
 
 export async function profilePage(view) {
