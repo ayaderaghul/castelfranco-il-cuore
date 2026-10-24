@@ -127,8 +127,8 @@ export async function profilePage(view) {
               <span class="small muted">le tue idee</span>
             </a>
             <a class="panel" href="#/diario" style="text-decoration:none;color:var(--ink)">
-              <span class="px gold" style="font-size:8px">DIARIO</span>
-              <span class="small muted">tutti gli eventi</span>
+              <span class="px gold" style="font-size:8px">EVENTI</span>
+              <span class="small muted">elenco ed elimina</span>
             </a>
           </div>
 

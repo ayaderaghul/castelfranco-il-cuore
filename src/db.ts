@@ -119,6 +119,8 @@ CREATE TABLE IF NOT EXISTS suggestions (
   done BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Suggestions created by a Claude import belong to that event and disappear with it.
+ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS event_id INT REFERENCES events(id) ON DELETE CASCADE;
 CREATE TABLE IF NOT EXISTS hygiene_logs (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

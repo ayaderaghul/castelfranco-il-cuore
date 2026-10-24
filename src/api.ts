@@ -307,7 +307,9 @@ export function apiRouter(): Router {
            COALESCE((SELECT json_agg(json_build_object('id', p.id, 'name', p.name, 'category', p.category) ORDER BY p.name)
              FROM event_people ep JOIN people p ON p.id = ep.person_id WHERE ep.event_id = e.id), '[]') AS people,
            COALESCE((SELECT json_agg(json_build_object('axis', pt.axis, 'delta', pt.delta, 'reason', pt.reason))
-             FROM event_points pt WHERE pt.event_id = e.id), '[]') AS points
+             FROM event_points pt WHERE pt.event_id = e.id), '[]') AS points,
+           (SELECT count(*)::int FROM item_collects ic WHERE ic.event_id = e.id) AS collected,
+           (SELECT count(*)::int FROM suggestions s WHERE s.event_id = e.id AND s.done = false) AS suggestions
          FROM events e WHERE e.user_id = $1 ORDER BY e.event_date DESC, e.id DESC LIMIT 300`,
         [userId],
       );
@@ -352,7 +354,10 @@ export function apiRouter(): Router {
       await tx(async (c) => {
         const own = await c.query("SELECT id FROM events WHERE id=$1 AND user_id=$2", [id, userId]);
         if (!own.rows[0]) throw new HttpError(404, "Evento non trovato.");
+        // Points, people links and Claude's suggestions cascade with the event;
+        // items collected in it are removed explicitly (their FK is SET NULL).
         await c.query("DELETE FROM item_collects WHERE event_id = $1", [id]);
+        await c.query("DELETE FROM suggestions WHERE event_id = $1 AND done = false", [id]);
         await c.query("DELETE FROM events WHERE id = $1", [id]);
       });
       res.json({ ok: true });
@@ -621,7 +626,9 @@ export function apiRouter(): Router {
             ]);
             points += delta;
           }
+          // Re-importing an event replaces what an earlier import of it produced.
           await c.query("DELETE FROM item_collects WHERE event_id=$1", [ev.id]);
+          await c.query("DELETE FROM suggestions WHERE event_id=$1 AND done=false", [ev.id]);
           for (const o of ev.oggetti_raccolti) {
             const itemId = await ensureItem(c, userId, o.nome, o.categoria, o.sprite);
             for (const name of o.persone) {
@@ -637,11 +644,12 @@ export function apiRouter(): Router {
             const itemId = await ensureItem(c, userId, s.oggetto, s.categoria, s.sprite);
             const dup = await c.query("SELECT 1 FROM suggestions WHERE person_id=$1 AND item_id=$2 AND done=false", [pid, itemId]);
             if (dup.rows[0]) continue;
-            await c.query("INSERT INTO suggestions (user_id, person_id, item_id, tip) VALUES ($1,$2,$3,$4)", [
+            await c.query("INSERT INTO suggestions (user_id, person_id, item_id, tip, event_id) VALUES ($1,$2,$3,$4,$5)", [
               userId,
               pid,
               itemId,
               s.consiglio,
+              ev.id,
             ]);
             suggestions += 1;
           }

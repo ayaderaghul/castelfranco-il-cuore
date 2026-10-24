@@ -16,6 +16,7 @@ const ROUTES = {
   persona: personFormPage,
   evento: eventPage,
   diario: diaryPage,
+  eventi: diaryPage,
   claude: claudePage,
   collezione: collectionPage,
   igiene: hygienePage,

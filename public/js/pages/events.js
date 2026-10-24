@@ -1,4 +1,4 @@
-import { api, html, mount, toast, confirmBox, fmtDate, todayRome, relative } from '../util.js';
+import { api, html, mount, modal, toast, fmtDate, todayRome, relative } from '../util.js';
 import { sprite, CATEGORY_COLOR } from '../sprites.js';
 import { AXES } from './profile.js';
 
@@ -151,7 +151,7 @@ export async function diaryPage(view) {
       view,
       html`<div class="head">
           <a class="back" href="#/profilo" aria-label="Indietro">&lt;</a>
-          <h1>DIARIO</h1>
+          <h1>EVENTI</h1>
           <div class="right"><a class="btn gold small-btn" href="#/evento">+ EVENTO</a></div>
         </div>
         <div class="wrap">
@@ -184,8 +184,25 @@ export async function diaryPage(view) {
   view.addEventListener('click', async (e) => {
     const d = e.target.closest('[data-del]');
     if (!d) return;
-    if (!(await confirmBox('Eliminare questo evento e i suoi punti?', 'ELIMINA'))) return;
-    await api(`/events/${d.dataset.del}`, { method: 'DELETE', body: {} });
+    const ev = data.events.find((x) => String(x.id) === d.dataset.del);
+    if (!ev) return;
+    const undo = [
+      ...ev.points.map((pt) => `${pt.delta > 0 ? '−' : '+'}${Math.abs(pt.delta)} ${axisName[pt.axis] ?? pt.axis}`),
+      ev.collected ? `−${ev.collected} oggetti raccolti` : '',
+      ev.suggestions ? `−${ev.suggestions} suggerimenti` : '',
+    ].filter(Boolean);
+    const ok = await modal(
+      html`<h2>ELIMINARE L’EVENTO DEL ${fmtDate(ev.event_date).toUpperCase()}?</h2>
+        ${undo.length
+          ? html`<p class="small soft">Verrà annullato:</p><div class="row wrap-row">${undo.map((u) => html`<span class="chip static">${u}</span>`)}</div>`
+          : html`<p class="small soft">Non ha ancora punti: sparisce solo dal diario.</p>`}
+        <p class="tiny muted">I cuori sulla mappa si aggiornano da soli.</p>
+        <div class="row"><button type="button" class="btn" data-close>ANNULLA</button><button type="button" class="btn danger" data-ok>ELIMINA</button></div>`,
+      (m, close) => m.querySelector('[data-ok]').addEventListener('click', () => close(true)),
+    );
+    if (!ok) return;
+    await api(`/events/${ev.id}`, { method: 'DELETE', body: {} });
+    toast(undo.length ? `Evento eliminato: ${undo.join(', ')}` : 'Evento eliminato.');
     data = await api('/events');
     draw();
   });
