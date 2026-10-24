@@ -7,6 +7,7 @@ import {
   AXES,
   CHORES,
   HABITS,
+  HEART_WEIGHT,
   WARMTH_AXES,
   WHEN_KINDS,
   addDays,
@@ -389,6 +390,7 @@ export function apiRouter(): Router {
             warmth: warmth(
               warm.filter((w) => w.person_id === p.id),
               today,
+              HEART_WEIGHT[p.category] ?? 1,
             ),
             collected: collected.filter((c) => c.person_id === p.id).map(({ person_id, ...rest }) => rest),
             suggestions: sugg.filter((s) => s.person_id === p.id).map(({ person_id, ...rest }) => rest),

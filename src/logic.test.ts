@@ -10,6 +10,7 @@ import {
   periodStatus,
   todayRome,
   warmth,
+  HEART_WEIGHT,
 } from "./logic.js";
 
 test("dates", () => {
@@ -78,4 +79,12 @@ test("warmth hearts expire after 30 days and fade after 23", () => {
     "2026-10-24",
   );
   assert.deepEqual(w, { hearts: 3, fading: 1, expiresOn: "2026-10-28" });
+});
+
+test("hearts are weighted by relationship", () => {
+  const coffee = [{ event_date: "2026-10-24", delta: 4 }]; // outrovert 1 + cuisine 1 + intimate 2
+  assert.equal(warmth(coffee, "2026-10-24", HEART_WEIGHT.amici).hearts, 2);
+  const dinner = [{ event_date: "2026-10-24", delta: 4 }]; // family dinner, same raw points
+  assert.equal(warmth(dinner, "2026-10-24", HEART_WEIGHT.famiglia).hearts, 5);
+  assert.equal(warmth([{ event_date: "2026-10-24", delta: 1 }], "2026-10-24", HEART_WEIGHT.amici).hearts, 1);
 });

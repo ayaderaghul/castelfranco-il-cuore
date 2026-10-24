@@ -23,6 +23,8 @@ Punti: interi da 0 a 3 (raramente di più), solo sugli assi che servono:
 - rooted_italy: si è sentita a casa in Italia
 - rooted_vietnam: si è sentita a casa / legata al Vietnam
 Per ogni asse con punti scrivi un motivo breve in italiano.
+Misura l'intensità: un caffè veloce o due chiacchiere valgono poco (outrovert 1, cuisine 1);
+un pranzo o una cena insieme, soprattutto in famiglia, valgono di più (outrovert 1-2, cuisine 2-3, intimate se si è parlato di cose personali).
 
 oggetti_raccolti: le cose fatte INSIEME a qualcuno in questo evento (cibi, bevande, passeggiate, regali, chiacchierate…).
 Riusa il nome esatto di un oggetto esistente quando corrisponde; altrimenti creane uno con una categoria breve

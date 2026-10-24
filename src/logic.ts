@@ -187,7 +187,14 @@ export interface Warmth {
   expiresOn: string | null; // when the oldest active heart disappears
 }
 
-export function warmth(rows: WarmthInput[], today: string): Warmth {
+/**
+ * How many hearts one warmth point is worth, by relationship.
+ * Family fills up fast (one dinner together ≈ full hearts); friends and
+ * professionals need several meetings (one coffee ≈ 2 hearts).
+ */
+export const HEART_WEIGHT: Record<string, number> = { famiglia: 1.25, amici: 0.5, pro: 0.5 };
+
+export function warmth(rows: WarmthInput[], today: string, weight = 1): Warmth {
   let active = 0;
   let fading = 0;
   let oldest: string | null = null;
@@ -198,10 +205,10 @@ export function warmth(rows: WarmthInput[], today: string): Warmth {
     if (age >= HEART_FADING_AFTER_DAYS) fading += r.delta;
     if (oldest === null || diffDays(r.event_date, oldest) < 0) oldest = r.event_date;
   }
-  const hearts = Math.min(5, active);
+  const hearts = Math.min(5, Math.round(active * weight));
   return {
     hearts,
-    fading: Math.min(hearts, fading),
-    expiresOn: oldest ? addDays(oldest, HEART_LIFETIME_DAYS) : null,
+    fading: Math.min(hearts, Math.round(fading * weight)),
+    expiresOn: hearts > 0 && oldest ? addDays(oldest, HEART_LIFETIME_DAYS) : null,
   };
 }

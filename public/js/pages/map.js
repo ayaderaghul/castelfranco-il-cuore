@@ -96,7 +96,7 @@ export async function mapPage(view) {
           <span class="row" style="gap:4px"><span style="width:12px;height:12px;background:#E58FB8"></span>famiglia</span>
           <span class="row" style="gap:4px"><span style="width:12px;height:12px;background:#C79BF2"></span>professionisti</span>
         </div>
-        <div class="tiny soft"><span style="color:var(--heart)">♥</span> calore = outrovert + intimate + cuisine con quella persona negli ultimi 30 giorni · <span style="color:var(--heart);opacity:.4">♥</span> svanisce entro 7 giorni</div>
+        <div class="tiny soft"><span style="color:var(--heart)">♥</span> calore = outrovert + intimate + cuisine con quella persona negli ultimi 30 giorni; in famiglia ogni punto vale di più (×1,25), con amici e professionisti meno (×0,5) · <span style="color:var(--heart);opacity:.4">♥</span> svanisce entro 7 giorni</div>
         <div class="tiny muted">L’isola dipende dalla città nella scheda: Stra, Vietnam/Hải Phòng, altrimenti Castelfranco.</div>
       </div>`,
   );
