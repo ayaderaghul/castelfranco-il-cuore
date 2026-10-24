@@ -329,7 +329,7 @@ export function apiRouter(): Router {
       const userId = uid(req);
       const today = todayRome();
       const people = await query(
-        "SELECT id, name, category, city, role, level, notes FROM people WHERE user_id = $1 ORDER BY lower(name)",
+        "SELECT id, name, category, city, role, level, notes, next_note FROM people WHERE user_id = $1 ORDER BY lower(name)",
         [userId],
       );
       const last = await query<{ person_id: number; event_date: string; when_kind: string }>(
@@ -400,6 +400,19 @@ export function apiRouter(): Router {
         `UPDATE people SET name=$3, category=$4, city=$5, role=$6, level=$7, notes=$8 WHERE id=$1 AND user_id=$2 RETURNING id`,
         [id, userId, b.name, b.category, b.city || "Castelfranco", b.role, b.level, b.notes],
       );
+      if (!rows[0]) throw new HttpError(404, "Persona non trovata.");
+      res.json({ ok: true });
+    }),
+  );
+
+  // The "prossima volta" note on a person's card, edited in place.
+  r.put(
+    "/people/:id/note",
+    h(async (req, res) => {
+      const userId = uid(req);
+      const id = parse(idParam, req.params.id);
+      const b = parse(z.object({ note: z.string().max(2000) }), req.body);
+      const rows = await query("UPDATE people SET next_note=$3 WHERE id=$1 AND user_id=$2 RETURNING id", [id, userId, b.note.trim()]);
       if (!rows[0]) throw new HttpError(404, "Persona non trovata.");
       res.json({ ok: true });
     }),

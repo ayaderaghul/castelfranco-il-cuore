@@ -126,6 +126,8 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS score_error TEXT;
 ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'claude';
 -- An item collected with nobody (person_id NULL) was collected alone ("da sola").
 ALTER TABLE item_collects ALTER COLUMN person_id DROP NOT NULL;
+-- What to remember for the next meeting with this person (shown on the card).
+ALTER TABLE people ADD COLUMN IF NOT EXISTS next_note TEXT NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS hygiene_logs (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

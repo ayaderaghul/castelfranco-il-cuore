@@ -168,3 +168,6 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold); outline: 
 .err-text { color: #FF8A80; font-size: 18px; }
 pre.json { margin: 0; background: #0E0E1F; border: 2px solid var(--line); padding: 6px 8px; font-family: var(--body); font-size: 16px; color: var(--soft); white-space: pre-wrap; max-height: 220px; overflow: auto; }
 .auth { padding: 40px 16px; display: flex; flex-direction: column; gap: 16px; }
+
+.note { display: flex; flex-direction: column; gap: 3px; text-align: left; background: var(--panel-2); border: 2px dashed var(--gold); padding: 6px 8px; color: var(--ink); font-family: var(--body); font-size: 18px; cursor: pointer; }
+.note:hover { border-style: solid; }

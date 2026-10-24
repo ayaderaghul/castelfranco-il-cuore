@@ -12,6 +12,7 @@ const PENCIL = html`<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden=
 export async function peoplePage(view, { params }) {
   let cat = params.get('tab') ?? 'amici';
   let data = await api('/people');
+  let editing = null; // id of the person whose "prossima volta" note is open
 
   const draw = () => {
     const list = data.people.filter((p) => p.category === cat);
@@ -43,6 +44,21 @@ export async function peoplePage(view, { params }) {
                 </div>
                 <div class="small"><span class="px muted" style="font-size:7px">ULTIMA VOLTA</span> ${p.last ? relative(p.last.date, p.last.approx) : 'mai registrata'}</div>
                 <div class="small">${hearts(p.warmth)} <span class="muted">${expiryText(p.warmth)}</span></div>
+                ${editing === p.id
+                  ? html`<div class="field">
+                      <label class="field-label" for="note-${p.id}">PROSSIMA VOLTA</label>
+                      <textarea id="note-${p.id}" data-note-input rows="3" maxlength="2000" placeholder="es. chiedere se il figlio è andato dalla famiglia della fidanzata">${p.next_note}</textarea>
+                      <div class="row">
+                        <button type="button" class="btn small-btn" data-note-cancel>ANNULLA</button>
+                        <button type="button" class="btn gold small-btn" data-note-save="${p.id}">SALVA</button>
+                      </div>
+                    </div>`
+                  : p.next_note
+                    ? html`<button type="button" class="note" data-note-edit="${p.id}" aria-label="Modifica nota per la prossima volta con ${p.name}">
+                        <span class="px gold" style="font-size:7px">PROSSIMA VOLTA</span>
+                        <span style="white-space:pre-wrap">${p.next_note}</span>
+                      </button>`
+                    : html`<button type="button" class="btn ghost" style="min-height:36px;font-size:17px;justify-content:flex-start" data-note-edit="${p.id}">+ nota per la prossima volta</button>`}
                 ${p.collected.length
                   ? html`<div class="itemrow"><span class="lbl">RACCOLTI</span>
                       ${p.collected.map(
@@ -63,6 +79,34 @@ export async function peoplePage(view, { params }) {
   };
 
   view.addEventListener('click', async (e) => {
+    const ne = e.target.closest('[data-note-edit]');
+    if (ne) {
+      editing = Number(ne.dataset.noteEdit);
+      draw();
+      view.querySelector('[data-note-input]')?.focus();
+      return;
+    }
+    if (e.target.closest('[data-note-cancel]')) {
+      editing = null;
+      draw();
+      return;
+    }
+    const ns = e.target.closest('[data-note-save]');
+    if (ns) {
+      const id = Number(ns.dataset.noteSave);
+      const note = view.querySelector('[data-note-input]').value;
+      try {
+        await api(`/people/${id}/note`, { method: 'PUT', body: { note } });
+        const p = data.people.find((x) => x.id === id);
+        if (p) p.next_note = note.trim();
+        editing = null;
+        draw();
+        toast(note.trim() ? 'Nota salvata.' : 'Nota cancellata.');
+      } catch (err) {
+        toast(err.message, true);
+      }
+      return;
+    }
     const c = e.target.closest('[data-cat]');
     if (c) {
       cat = c.dataset.cat;
