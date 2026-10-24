@@ -10,6 +10,7 @@ export const AXES = [
   { key: 'be_seen', name: 'be seen point', c: '#FFE08A' },
   { key: 'rooted_italy', name: 'rooted Italy point', c: '#E07A5F' },
   { key: 'rooted_vietnam', name: 'rooted Vietnam point', c: '#4FC3B5' },
+  { key: 'integrity', name: 'integrity point', c: '#B8E0D2' },
 ];
 
 export function weatherWord(code) {

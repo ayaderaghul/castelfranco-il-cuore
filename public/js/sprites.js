@@ -24,6 +24,11 @@ const S = {
   manzo_ananas: { rows: ['........', '...Y....', '..MYMY..', '.MMYMMY.', '.YMMYMM.', 'PPPPPPPP', '.PPPPPP.', '........'], pal: { M: '#7A3B1F', Y: '#F2D13E', P: '#E8E3D0' } },
   maiale_mango: { rows: ['........', '..O.....', '.KOKKO..', '.KKOKKO.', '.OKKOKK.', 'PPPPPPPP', '.PPPPPP.', '........'], pal: { K: '#D98C6A', O: '#F7A21B', P: '#E8E3D0' } },
   involtini: { rows: ['........', 'WWWWWWW.', 'WSWGWSW.', 'WWWWWWW.', '........', 'WWWWWWW.', 'WSWGWSW.', 'WWWWWWW.'], pal: { W: '#E9E4D4', S: '#F28C6B', G: '#5FA864' } },
+  rosa: { rows: ['..RRR...', '.RRDRR..', '.RDRRR..', '..RRR...', '...G.L..', '...GL...', '..LG....', '...G....'], pal: { R: '#D7263D', D: '#8E1B2B', G: '#3E7C4A', L: '#5FA864' } },
+  palestra: { rows: ['........', '........', 'GG....GG', 'GGHHHHGG', 'GGHHHHGG', 'GG....GG', '........', '........'], pal: { G: '#8A8AA8', H: '#C9C4DE' } },
+  fiume: { rows: ['GGGGGGGG', 'GGTGGGTG', 'BBWBBBBB', 'BBBBBWBB', 'BWBBBBBB', 'GGGGGTGG', 'GTGGGGGG', 'GGGGGGGG'], pal: { G: '#3E7C4A', T: '#2E5E38', B: '#2A6F97', W: '#7FB3E6' } },
+  fiore: { rows: ['..P.P...', '.PPPPP..', 'PPPYPPP.', '.PPPPP..', '..P.P...', '...G....', '..GGL...', '...G....'], pal: { P: '#F7A8C4', Y: '#F2C14E', G: '#3E7C4A', L: '#5FA864' } },
+  dottore: { rows: ['WWWWWWWW', 'WWWRRWWW', 'WWWRRWWW', 'WRRRRRRW', 'WRRRRRRW', 'WWWRRWWW', 'WWWRRWWW', 'WWWWWWWW'], pal: { W: '#F4EBD0', R: '#D7263D' } },
   stella: { rows: ['...Y....', '...Y....', 'YYYYYYY.', '..YYY...', '..YYY...', '.YY.YY..', 'YY...YY.', '........'], pal: { Y: '#F2C14E' } },
 };
 
@@ -32,6 +37,7 @@ export const SPRITE_NAMES = {
   spritz: 'aperitivo', monte: 'montagna', scarpa: 'camminata', giornale: 'giornale', chiacchiera: 'chiacchiera',
   gnomo: 'gnomo', regalo: 'regalo', loto: 'loto', sole: 'sole', libro: 'libro', pianta: 'pianta', stella: 'stella',
   pizza: 'pizza', tiramisu: 'tiramisù', manzo_ananas: 'manzo all’ananas', maiale_mango: 'maiale al mango', involtini: 'involtini di gamberi',
+  rosa: 'rosa · intimità', palestra: 'palestra', fiume: 'fiume · Musone', fiore: 'fiore', dottore: 'dottore',
 };
 
 function svgFrom(rows, pal, px, label) {

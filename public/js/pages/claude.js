@@ -15,6 +15,7 @@ Per ogni evento assegna punti (interi da 0 a 3, raramente di più) su questi ass
 - be_seen: qualcuno mi ha riconosciuta, mi sono sentita vista o brava in qualcosa
 - rooted_italy: mi sono sentita a casa in Italia
 - rooted_vietnam: mi sono sentita a casa / legata al Vietnam
+- integrity: ho mantenuto un impegno, ho fatto il mio lavoro o il mio dovere con serietà (es. un turno al Nido)
 Misura l'intensità: un caffè veloce vale poco (outrovert 1, cuisine 1); un pranzo o una cena insieme, soprattutto in famiglia, vale di più (cuisine 2-3).
 Per ogni asse con punti scrivi un motivo breve.
 

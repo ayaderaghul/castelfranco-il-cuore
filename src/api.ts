@@ -19,6 +19,7 @@ import {
   periodStatus,
   todayRome,
   warmth,
+  yearSummary,
   type Chore,
   type Habit,
   type Period,
@@ -30,6 +31,7 @@ export const SPRITES = [
   "macchiato", "cornetto", "piatto", "miele", "costine", "pho", "spritz", "monte", "scarpa",
   "giornale", "chiacchiera", "gnomo", "regalo", "loto", "sole", "libro", "pianta", "stella",
   "pizza", "tiramisu", "manzo_ananas", "maiale_mango", "involtini",
+  "rosa", "palestra", "fiume", "fiore", "dottore",
 ] as const;
 
 type Handler = (req: Request, res: Response) => Promise<void>;
@@ -126,7 +128,33 @@ async function goalSummary<K extends string>(
   return { today, month, trackingStart: start, goals: out };
 }
 
+async function goalYear<K extends string>(
+  table: "hygiene_logs" | "chore_logs",
+  column: "habit" | "chore",
+  rules: Record<K, { periodDays: number; base: number; label: string }>,
+  userId: number,
+  year: number,
+) {
+  const today = todayRome();
+  const start = await trackingStart(userId);
+  const yearEnd = `${year}-12-31`;
+  const rows = await query<{ day: string; k: string; n: number }>(
+    `SELECT day, ${column} AS k, count(*)::int AS n FROM ${table} WHERE user_id = $1 AND day >= $2 AND day <= $3 GROUP BY day, ${column}`,
+    [userId, start, yearEnd],
+  );
+  const periodsByKey: Record<string, Period[]> = {};
+  const labels: Record<string, string> = {};
+  for (const key of Object.keys(rules) as K[]) {
+    const counts = new Map<string, number>();
+    for (const r of rows) if (r.k === key) counts.set(r.day, r.n);
+    periodsByKey[key] = diffDays(yearEnd, start) >= 0 ? computePeriods(rules[key], counts, start, yearEnd) : [];
+    labels[key] = rules[key].label;
+  }
+  return { today, trackingStart: start, labels, ...yearSummary(periodsByKey, year, today, start) };
+}
+
 const monthQ = z.string().regex(/^\d{4}-\d{2}$/);
+const yearQ = z.coerce.number().int().min(2020).max(2100);
 
 // ---------- scoring (shared by manual JSON import and automatic Claude API scoring) ----------
 
@@ -722,6 +750,15 @@ export function apiRouter(): Router {
     }),
   );
 
+  r.get(
+    "/hygiene/year",
+    h(async (req, res) => {
+      const userId = uid(req);
+      const year = parse(yearQ.optional(), req.query.year) ?? Number(todayRome().slice(0, 4));
+      res.json(await goalYear("hygiene_logs", "habit", HABITS, userId, year));
+    }),
+  );
+
   r.post(
     "/hygiene",
     h(async (req, res) => {
@@ -752,6 +789,15 @@ export function apiRouter(): Router {
       const userId = uid(req);
       const month = parse(monthQ.optional(), req.query.month) ?? todayRome().slice(0, 7);
       res.json(await goalSummary("chore_logs", "chore", CHORES, userId, month));
+    }),
+  );
+
+  r.get(
+    "/chores/year",
+    h(async (req, res) => {
+      const userId = uid(req);
+      const year = parse(yearQ.optional(), req.query.year) ?? Number(todayRome().slice(0, 4));
+      res.json(await goalYear("chore_logs", "chore", CHORES, userId, year));
     }),
   );
 

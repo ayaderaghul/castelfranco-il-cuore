@@ -11,6 +11,7 @@ export const AXES = [
   "be_seen",
   "rooted_italy",
   "rooted_vietnam",
+  "integrity",
 ] as const;
 export type Axis = (typeof AXES)[number];
 
@@ -144,19 +145,56 @@ export function periodStatus(p: Period, today: string, trackingStart: string): P
  * Share of the goal achieved in a month: sum(min(done, target)) / sum(target)
  * over periods that end in the month. A period still running only counts once it's met.
  */
-export function monthAdherence(periods: Period[], month: string, today: string, trackingStart: string): number | null {
+export function monthTotals(periods: Period[], month: string, today: string, trackingStart: string): { got: number; need: number } {
   const { first, last } = monthBounds(month);
   let got = 0;
   let need = 0;
   for (const p of periods) {
     if (diffDays(p.end, first) < 0 || diffDays(p.end, last) > 0) continue;
     const st = periodStatus(p, today, trackingStart);
-    if (st === "before" || st === "future") continue;
-    if (st === "pending") continue;
+    if (st === "before" || st === "future" || st === "pending") continue;
     got += Math.min(p.done, p.target);
     need += p.target;
   }
+  return { got, need };
+}
+
+export function monthAdherence(periods: Period[], month: string, today: string, trackingStart: string): number | null {
+  const { got, need } = monthTotals(periods, month, today, trackingStart);
   return need === 0 ? null : got / need;
+}
+
+/**
+ * One row per month of the year: adherence per goal and all goals together.
+ * Months with nothing to measure yet (before tracking, or in the future) are null.
+ */
+export function yearSummary(
+  periodsByKey: Record<string, Period[]>,
+  year: number,
+  today: string,
+  trackingStart: string,
+) {
+  const keys = Object.keys(periodsByKey);
+  const yearSum: Record<string, { got: number; need: number }> = Object.fromEntries(keys.map((k) => [k, { got: 0, need: 0 }]));
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    const month = `${year}-${String(m).padStart(2, "0")}`;
+    const per: Record<string, number | null> = {};
+    let got = 0;
+    let need = 0;
+    for (const k of keys) {
+      const t = monthTotals(periodsByKey[k], month, today, trackingStart);
+      per[k] = t.need ? t.got / t.need : null;
+      got += t.got;
+      need += t.need;
+      yearSum[k].got += t.got;
+      yearSum[k].need += t.need;
+    }
+    months.push({ month, perGoal: per, total: need ? got / need : null });
+  }
+  const perGoalYear = Object.fromEntries(keys.map((k) => [k, yearSum[k].need ? yearSum[k].got / yearSum[k].need : null]));
+  const all = keys.reduce((a, k) => ({ got: a.got + yearSum[k].got, need: a.need + yearSum[k].need }), { got: 0, need: 0 });
+  return { year, months, perGoalYear, total: all.need ? all.got / all.need : null };
 }
 
 export const HABITS = {

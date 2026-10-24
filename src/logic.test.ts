@@ -11,6 +11,7 @@ import {
   todayRome,
   warmth,
   HEART_WEIGHT,
+  yearSummary,
 } from "./logic.js";
 
 test("dates", () => {
@@ -79,6 +80,19 @@ test("warmth hearts expire after 30 days and fade after 23", () => {
     "2026-10-24",
   );
   assert.deepEqual(w, { hearts: 3, fading: 1, expiresOn: "2026-10-28" });
+});
+
+test("year summary: months before tracking and in the future are empty", () => {
+  const counts = new Map([
+    ["2026-10-22", 1],
+    ["2026-10-23", 0],
+  ]);
+  const ps = computePeriods({ periodDays: 1, base: 1 }, counts, "2026-10-22", "2026-12-31");
+  const y = yearSummary({ doccia: ps }, 2026, "2026-10-24", "2026-10-22");
+  assert.equal(y.months[8].total, null); // September: before tracking
+  assert.equal(y.months[9].total, 0.5); // October: 1 of 2 finished days
+  assert.equal(y.months[10].total, null); // November: future
+  assert.equal(y.perGoalYear.doccia, 0.5);
 });
 
 test("hearts are weighted by relationship", () => {
