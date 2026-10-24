@@ -4,6 +4,7 @@ import { AXES } from './profile.js';
 export const PROMPT = `Sei il "maestro del gioco" di Castelfranco il cuore, il mio diario geo-sociale privato.
 Ti allego un file JSON con i miei eventi non ancora valutati.
 
+Il tuo unico compito sono i punti: non proporre oggetti né attività.
 Per ogni evento assegna punti (interi da 0 a 3, raramente di più) su questi assi, solo dove servono:
 - outrovert: ho passato tempo con gli altri, sono uscita
 - cuisine: abbiamo mangiato o bevuto insieme, ho cucinato
@@ -15,11 +16,7 @@ Per ogni evento assegna punti (interi da 0 a 3, raramente di più) su questi ass
 - rooted_italy: mi sono sentita a casa in Italia
 - rooted_vietnam: mi sono sentita a casa / legata al Vietnam
 Misura l'intensità: un caffè veloce vale poco (outrovert 1, cuisine 1); un pranzo o una cena insieme, soprattutto in famiglia, vale di più (cuisine 2-3).
-
-Poi indica:
-- "oggetti_raccolti": le cose fatte insieme a qualcuno (cibi, bevande, passeggiate, regali, chiacchierate…). Riusa gli "oggetti_esistenti" quando corrispondono (stesso nome), altrimenti creane di nuovi con una categoria breve (es. "Cibo", "Caffè e aperitivo", "Camminata", "Chiacchiere", "Regali", "Benessere").
-- "suggerimenti": 1-2 prossime mosse concrete per le persone dell'evento, come oggetti da raccogliere, con un breve consiglio.
-Per "sprite" scegli solo tra "sprite_disponibili". Usa i nomi delle persone esattamente come nel file.
+Per ogni asse con punti scrivi un motivo breve.
 
 Rispondi SOLO con un JSON valido in questo formato, senza testo prima o dopo:
 {
@@ -27,13 +24,7 @@ Rispondi SOLO con un JSON valido in questo formato, senza testo prima o dopo:
     {
       "id": 12,
       "punti": { "outrovert": 1, "cuisine": 1 },
-      "motivi": { "outrovert": "siete uscite insieme", "cuisine": "macchiato e cornetto" },
-      "oggetti_raccolti": [
-        { "nome": "Caffè macchiato", "categoria": "Caffè e aperitivo", "sprite": "macchiato", "persone": ["Stefi"] }
-      ],
-      "suggerimenti": [
-        { "persona": "Stefi", "oggetto": "Pranzo vietnamita", "categoria": "Cibo", "sprite": "pho", "consiglio": "Fissate la data per Natale" }
-      ]
+      "motivi": { "outrovert": "siete uscite insieme", "cuisine": "macchiato e cornetto" }
     }
   ]
 }`;
@@ -95,8 +86,6 @@ export async function claudePage(view) {
                     <div class="row wrap-row">${Object.entries(ev.punti ?? {}).map(
                       ([k, v]) => html`<span class="chip static" title="${ev.motivi?.[k] ?? ''}" style="border-color:${axisColor[k] ?? '#6E6A8E'};color:${axisColor[k] ?? '#A8A3C2'}">${v > 0 ? '+' : ''}${v} ${k}</span>`,
                     )}</div>
-                    ${(ev.oggetti_raccolti ?? []).map((o) => html`<span class="small">✓ ${o.nome} con ${(o.persone ?? []).join(', ')}</span>`)}
-                    ${(ev.suggerimenti ?? []).map((s) => html`<span class="small gold">▸ ${s.persona}: ${s.oggetto}${s.consiglio ? ` — ${s.consiglio}` : ''}</span>`)}
                   </div>`,
                 )}
                 <div class="row">
@@ -177,7 +166,7 @@ export async function claudePage(view) {
     if (e.target.closest('[data-apply]') && preview) {
       try {
         const r = await api('/claude/import', { method: 'POST', body: { eventi: preview.eventi } });
-        toast(`Fatto: ${r.events} eventi, ${r.collected} oggetti raccolti, ${r.suggestions} suggerimenti.${r.skipped.length ? ` Saltati: ${r.skipped.join(', ')}` : ''}`);
+        toast(`Fatto: ${r.events} eventi valutati.${r.skipped.length ? ` Saltati: ${r.skipped.join(', ')}` : ''}`);
         preview = null;
         draw();
       } catch (err) {

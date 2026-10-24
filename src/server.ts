@@ -48,6 +48,13 @@ app.use(
 );
 app.get("*", (_req, res) => res.sendFile(path.join(publicDir, "index.html")));
 
+// Last resort: bad JSON bodies and unexpected errors get a short JSON reply, never a stack trace.
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const status = typeof err?.status === "number" && err.status < 500 ? err.status : 500;
+  if (status === 500) console.error(err);
+  res.status(status).json({ error: status === 500 ? "Errore del server." : "Richiesta non valida." });
+});
+
 const port = Number(process.env.PORT ?? 3000);
 migrate()
   .then(() => {

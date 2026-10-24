@@ -248,7 +248,7 @@ export async function diaryPage(view) {
       draw();
       try {
         const r = await api(`/events/${id}/score`, { method: 'POST', body: { includePrivate: priv } });
-        toast(`Valutato: ${r.points > 0 ? '+' : ''}${r.points} punti, ${r.collected} oggetti, ${r.suggestions} suggerimenti.`);
+        toast(`Valutato: ${r.points > 0 ? '+' : ''}${r.points} punti.`);
       } catch (err) {
         toast(err.message, true);
       }

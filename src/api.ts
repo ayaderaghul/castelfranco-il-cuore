@@ -73,29 +73,6 @@ async function ownedIds(c: PoolClient | null, table: "people" | "items", userId:
   return rows.map((r: { id: number }) => r.id);
 }
 
-async function ensureCategory(c: PoolClient, userId: number, name: string): Promise<number> {
-  const clean = name.trim().slice(0, 40) || "Altro";
-  const found = await c.query("SELECT id FROM item_categories WHERE user_id = $1 AND lower(name) = lower($2)", [userId, clean]);
-  if (found.rows[0]) return found.rows[0].id;
-  const ins = await c.query("INSERT INTO item_categories (user_id, name) VALUES ($1, $2) RETURNING id", [userId, clean]);
-  return ins.rows[0].id;
-}
-
-async function ensureItem(c: PoolClient, userId: number, name: string, category: string, sprite: string): Promise<number> {
-  const clean = name.trim().slice(0, 60);
-  const found = await c.query("SELECT id FROM items WHERE user_id = $1 AND lower(name) = lower($2)", [userId, clean]);
-  if (found.rows[0]) return found.rows[0].id;
-  const catId = await ensureCategory(c, userId, category);
-  const sp = (SPRITES as readonly string[]).includes(sprite) ? sprite : "stella";
-  const ins = await c.query("INSERT INTO items (user_id, category_id, name, sprite) VALUES ($1, $2, $3, $4) RETURNING id", [
-    userId,
-    catId,
-    clean,
-    sp,
-  ]);
-  return ins.rows[0].id;
-}
-
 async function collect(c: PoolClient, itemId: number, personId: number, day: string, eventId: number | null): Promise<void> {
   await c.query("INSERT INTO item_collects (item_id, person_id, event_id, collected_on) VALUES ($1, $2, $3, $4)", [
     itemId,
@@ -185,19 +162,15 @@ type ScoredEvent = z.output<typeof scoredEvent>;
 const importBody = z.object({ eventi: z.array(scoredEvent).max(200) });
 
 /**
- * Writes one event's score inside a transaction, replacing whatever an earlier
- * scoring of the same event produced. Returns null if the event isn't the user's.
+ * Writes one event's points (the 9 axes) inside a transaction, replacing an earlier
+ * scoring of the same event. Claude only scores: the items collected and the ideas
+ * picked in the event form are the user's choice and are never touched here.
+ * Returns null if the event isn't the user's.
  */
 async function applyScore(c: PoolClient, userId: number, ev: ScoredEvent) {
-  const own = await c.query("SELECT id, event_date FROM events WHERE id=$1 AND user_id=$2", [ev.id, userId]);
+  const own = await c.query("SELECT id FROM events WHERE id=$1 AND user_id=$2", [ev.id, userId]);
   if (!own.rows[0]) return null;
-  const date: string = own.rows[0].event_date;
-  const people = (await c.query("SELECT id, name FROM people WHERE user_id=$1", [userId])).rows as { id: number; name: string }[];
-  const byName = (n: string) => people.find((p) => p.name.trim().toLowerCase() === n.trim().toLowerCase())?.id;
   let points = 0;
-  let collected = 0;
-  let suggestions = 0;
-
   await c.query("DELETE FROM event_points WHERE event_id=$1", [ev.id]);
   for (const [axis, rawDelta] of Object.entries(ev.punti)) {
     if (!(AXES as readonly string[]).includes(axis)) continue;
@@ -211,34 +184,8 @@ async function applyScore(c: PoolClient, userId: number, ev: ScoredEvent) {
     ]);
     points += delta;
   }
-  await c.query("DELETE FROM item_collects WHERE event_id=$1", [ev.id]);
-  await c.query("DELETE FROM suggestions WHERE event_id=$1 AND done=false AND source='claude'", [ev.id]);
-  for (const o of ev.oggetti_raccolti) {
-    const itemId = await ensureItem(c, userId, o.nome, o.categoria, o.sprite);
-    for (const name of o.persone) {
-      const pid = byName(name);
-      if (!pid) continue;
-      await collect(c, itemId, pid, date, ev.id);
-      collected += 1;
-    }
-  }
-  for (const s of ev.suggerimenti) {
-    const pid = byName(s.persona);
-    if (!pid) continue;
-    const itemId = await ensureItem(c, userId, s.oggetto, s.categoria, s.sprite);
-    const dup = await c.query("SELECT 1 FROM suggestions WHERE person_id=$1 AND item_id=$2 AND done=false", [pid, itemId]);
-    if (dup.rows[0]) continue;
-    await c.query("INSERT INTO suggestions (user_id, person_id, item_id, tip, event_id) VALUES ($1,$2,$3,$4,$5)", [
-      userId,
-      pid,
-      itemId,
-      s.consiglio,
-      ev.id,
-    ]);
-    suggestions += 1;
-  }
   await c.query("UPDATE events SET scored_at = now(), score_error = NULL WHERE id=$1", [ev.id]);
-  return { points, collected, suggestions };
+  return { points, collected: 0, suggestions: 0 };
 }
 
 // A small per-user cap so a bug or a stuck loop can't run up the API bill.
@@ -270,14 +217,8 @@ export async function scoreEvent(userId: number, eventId: number, includePrivate
       "SELECT name AS nome, category AS categoria, city AS citta, role AS ruolo FROM people WHERE user_id=$1",
       [userId],
     );
-    const items = await query(
-      `SELECT i.name AS nome, c.name AS categoria, i.sprite FROM items i JOIN item_categories c ON c.id = i.category_id WHERE i.user_id=$1`,
-      [userId],
-    );
     const result = await askClaudeToScore({
       persone: people,
-      oggetti_esistenti: items,
-      sprite_disponibili: SPRITES,
       assi: AXES,
       evento: {
         id: e.id,
@@ -708,20 +649,12 @@ export function apiRouter(): Router {
         [userId],
       );
       const people = await query("SELECT name AS nome, category AS categoria, city AS citta, role AS ruolo FROM people WHERE user_id=$1", [userId]);
-      const items = await query(
-        `SELECT i.name AS nome, c.name AS categoria, i.sprite FROM items i JOIN item_categories c ON c.id = i.category_id WHERE i.user_id=$1`,
-        [userId],
-      );
-      const cats = await query("SELECT name FROM item_categories WHERE user_id=$1", [userId]);
       res.json({
         app: "castelfranco-il-cuore",
-        versione: 1,
+        versione: 2,
         generato_il: todayRome(),
         assi: AXES,
-        sprite_disponibili: SPRITES,
-        categorie_oggetti: cats.map((c: any) => c.name),
         persone: people,
-        oggetti_esistenti: items,
         eventi: events.map((e) => ({
           id: e.id,
           data: e.event_date,
