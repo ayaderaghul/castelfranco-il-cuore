@@ -30,6 +30,8 @@ const S = {
   fiore: { rows: ['..P.P...', '.PPPPP..', 'PPPYPPP.', '.PPPPP..', '..P.P...', '...G....', '..GGL...', '...G....'], pal: { P: '#F7A8C4', Y: '#F2C14E', G: '#3E7C4A', L: '#5FA864' } },
   dottore: { rows: ['WWWWWWWW', 'WWWRRWWW', 'WWWRRWWW', 'WRRRRRRW', 'WRRRRRRW', 'WWWRRWWW', 'WWWRRWWW', 'WWWWWWWW'], pal: { W: '#F4EBD0', R: '#D7263D' } },
   soldi: { rows: ['..YDYY..', '.YDDDDY.', 'YYDDYYYY', 'YYDDDDYY', 'YYYDYDYY', '.YDDDDY.', '..YDYY..', '........'], pal: { Y: '#F2C14E', D: '#7A5A10' } },
+  codice: { rows: ['SSSSSSSS', 'SKKKKKKS', 'SKGKKKKS', 'SKKGKKKS', 'SKGKKKKS', 'SKKKGGKS', 'SSSSSSSS', '..SSSS..'], pal: { S: '#C9C4DE', K: '#0E1A12', G: '#8FD694' } },
+  italiano: { rows: ['........', '..HH...G', '.HSSH.G.', '.SSES..W', '.SSSSMW.', '..SS...R', '.CCCC.R.', 'CCCCCC..'], pal: { H: '#3A2A1A', S: '#F1C9A5', E: '#14142B', M: '#B8392E', G: '#3E9B4F', W: '#F4EBD0', R: '#D7263D', C: '#7FB3E6' } },
   stella: { rows: ['...Y....', '...Y....', 'YYYYYYY.', '..YYY...', '..YYY...', '.YY.YY..', 'YY...YY.', '........'], pal: { Y: '#F2C14E' } },
 };
 
@@ -39,6 +41,7 @@ export const SPRITE_NAMES = {
   gnomo: 'gnomo', regalo: 'regalo', loto: 'loto', sole: 'sole', libro: 'libro', pianta: 'pianta', stella: 'stella',
   pizza: 'pizza', tiramisu: 'tiramisù', manzo_ananas: 'manzo all’ananas', maiale_mango: 'maiale al mango', involtini: 'involtini di gamberi',
   rosa: 'rosa · intimità', palestra: 'palestra', fiume: 'fiume · Musone', fiore: 'fiore', dottore: 'dottore', soldi: 'soldi',
+  codice: 'studio programmazione', italiano: 'studio italiano',
 };
 
 function svgFrom(rows, pal, px, label) {

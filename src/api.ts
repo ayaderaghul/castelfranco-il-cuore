@@ -31,7 +31,7 @@ export const SPRITES = [
   "macchiato", "cornetto", "piatto", "miele", "costine", "pho", "spritz", "monte", "scarpa",
   "giornale", "chiacchiera", "gnomo", "regalo", "loto", "sole", "libro", "pianta", "stella",
   "pizza", "tiramisu", "manzo_ananas", "maiale_mango", "involtini",
-  "rosa", "palestra", "fiume", "fiore", "dottore", "soldi",
+  "rosa", "palestra", "fiume", "fiore", "dottore", "soldi", "codice", "italiano",
 ] as const;
 
 type Handler = (req: Request, res: Response) => Promise<void>;
