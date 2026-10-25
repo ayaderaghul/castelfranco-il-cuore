@@ -5,7 +5,6 @@ import helmet from "helmet";
 import { migrate } from "./db.js";
 import { authRouter, loadSession, requireAppHeader, requireAuth } from "./auth.js";
 import { apiRouter } from "./api.js";
-import { warmFeeds } from "./feeds.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(here, "..", "public");
@@ -20,8 +19,9 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        // Fonts are self-hosted: the browser never contacts a third party.
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        fontSrc: ["'self'"],
         imgSrc: ["'self'", "data:"],
         connectSrc: ["'self'"],
         objectSrc: ["'none'"],
@@ -44,7 +44,9 @@ app.use("/api", (_req, res) => res.status(404).json({ error: "Non trovato." }));
 app.use(
   express.static(publicDir, {
     index: "index.html",
-    setHeaders: (res) => res.setHeader("Cache-Control", "no-cache"),
+    // Font files never change: cache them for a year. Everything else revalidates.
+    setHeaders: (res, filePath) =>
+      res.setHeader("Cache-Control", /[\\/]fonts[\\/].+\.woff2$/.test(filePath) ? "public, max-age=31536000, immutable" : "no-cache"),
   }),
 );
 app.get("*", (_req, res) => res.sendFile(path.join(publicDir, "index.html")));
@@ -59,10 +61,8 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 const port = Number(process.env.PORT ?? 3000);
 migrate()
   .then(() => {
-    app.listen(port, () => {
-      console.log(`Castelfranco il cuore on :${port}`);
-      void warmFeeds();
-    });
+    // No warm-up: outside services are only called when an open page asks for data.
+    app.listen(port, () => console.log(`Castelfranco il cuore on :${port}`));
   })
   .catch((err) => {
     console.error("Migration failed", err);

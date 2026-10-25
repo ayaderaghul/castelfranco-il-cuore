@@ -2,6 +2,8 @@
 // Claude only scores: items and ideas are chosen by the user in the event form.
 // The key stays on the server (env var only).
 import { AXES } from "./logic.js";
+import { ServiceError } from "./outbound.js";
+import { outbound } from "./outboundStore.js";
 
 const API_URL = `${process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com"}/v1/messages`;
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-haiku-5-5";
@@ -54,12 +56,17 @@ const forcedToolOk = (model: string) => !/opus-5-5|sonnet-5-5|fable|mythos/.test
 export async function askClaudeToScore(input: Record<string, unknown>): Promise<unknown> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("chiave API mancante");
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 60_000);
+  // Goes through the same polite layer as weather and news: a 429/5xx pauses scoring
+  // (respecting Retry-After) instead of hammering the API; POSTs are never cached.
+  let r;
   try {
-    const res = await fetch(API_URL, {
+    r = await outbound.request("anthropic", API_URL, {
       method: "POST",
-      signal: ctrl.signal,
+      cache: false,
+      cacheKey: "-",
+      minTtlMs: 0,
+      defaultTtlMs: 0,
+      timeoutMs: 60_000,
       headers: {
         "content-type": "application/json",
         "x-api-key": key,
@@ -79,21 +86,27 @@ export async function askClaudeToScore(input: Record<string, unknown>): Promise<
         ],
       }),
     });
-    const body: any = await res.json().catch(() => null);
-    if (!res.ok) {
-      const msg = body?.error?.message ?? `HTTP ${res.status}`;
-      if (res.status === 401) throw new Error("chiave API non valida");
-      if (res.status === 429) throw new Error("limite API raggiunto, riprova tra poco");
-      if (res.status === 400 && /credit|balance/i.test(msg)) throw new Error("credito API esaurito");
-      throw new Error(msg);
-    }
-    const use = body?.content?.find((b: any) => b.type === "tool_use" && b.name === TOOL.name);
-    if (!use) throw new Error("Claude non ha restituito una valutazione");
-    return use.input;
   } catch (err) {
-    if ((err as Error).name === "AbortError") throw new Error("Claude non ha risposto in tempo");
+    if (err instanceof ServiceError) {
+      const e = err as ServiceError & { status?: number; responseBody?: string };
+      let msg = "";
+      try {
+        msg = JSON.parse(e.responseBody ?? "")?.error?.message ?? "";
+      } catch {
+        /* not JSON */
+      }
+      if (e.status === 401) throw new Error("chiave API non valida");
+      if (e.status === 400 && /credit|balance/i.test(msg)) throw new Error("credito API esaurito");
+      if (e.kind === "paused" || e.kind === "blocked" || e.kind === "stopped" || e.kind === "failed") {
+        const when = e.until ? ` (riprovo dopo le ${new Date(e.until).toLocaleTimeString("it-IT", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit" })})` : "";
+        throw new Error(`${e.message}${when}`);
+      }
+      throw new Error(msg || e.message);
+    }
     throw err;
-  } finally {
-    clearTimeout(timer);
   }
+  const body: any = JSON.parse(r.body);
+  const use = body?.content?.find((b: any) => b.type === "tool_use" && b.name === TOOL.name);
+  if (!use) throw new Error("Claude non ha restituito una valutazione");
+  return use.input;
 }

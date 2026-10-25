@@ -6,7 +6,7 @@ Diario geo-sociale privato in stile 8-bit: le persone della mia vita tra Castelf
 
 - Node 20+ / TypeScript / Express, Postgres (Neon)
 - Frontend senza build: ES modules in `public/`
-- Meteo: Open-Meteo (senza chiave). Notizie: Google News RSS.
+- Meteo: MET Norway (riserva Open-Meteo). Notizie: ANSA RSS, VnExpress RSS (riserva GDELT). Font self-hosted (Press Start 2P, VT323, OFL) — nessuna chiamata a Google.
 
 ## Sicurezza
 
@@ -33,3 +33,26 @@ npm run build && npm start                   # produzione
 - **Faccende**: scopa, mocio, piante, bagno 1/settimana (lun–dom); se salti, la settimana dopo vale ×2.
 - **Ciclo con Claude**: con `ANTHROPIC_API_KEY` impostata sul server, ogni evento salvato riceve in automatico i punti sui 10 assi da Claude Haiku (solo i punti: oggetti raccolti e idee li scegli tu nel modulo) (`ANTHROPIC_MODEL` per cambiare modello). Gli eventi privati partono solo se li invii tu dalla pagina Eventi. Senza chiave resta il copia e incolla: esporta il JSON, dallo a Claude col prompt dell'app, ricarica la risposta.
 - **Eliminare un evento** annulla i suoi punti, gli oggetti raccolti e i suggerimenti che aveva generato.
+
+## Servizi esterni
+
+Tutte le chiamate partono dal server, mai dal browser: il tuo IP resta privato. Elenco e stato in app: `#/servizi`.
+
+| Servizio | Uso | Come rispettiamo i termini |
+|---|---|---|
+| MET Norway (api.met.no) | meteo | User-Agent identificativo, coordinate a 4 decimali, `Expires` e `If-Modified-Since` salvati in Neon (`http_cache`), credito CC BY 4.0 |
+| Open-Meteo | meteo di riserva | solo se MET Norway fallisce, cache 30 min, uso non commerciale, credito CC BY 4.0 |
+| ANSA RSS | notizie mondo/Italia/Europa/Veneto | uso personale, titolo + link alla fonte, cache 30 min |
+| VnExpress RSS | notizie Vietnam | uso personale, titolo + link alla fonte, cache 30 min |
+| GDELT | notizie Vietnam di riserva | cache 1 h |
+| Anthropic API | punteggio eventi | solo quando salvi un evento |
+
+Il meteo si aggiorna solo mentre la pagina profilo è aperta e visibile; all'avvio il server non chiama nulla.
+
+Pause per servizio (tabella `service_state`, sopravvive ai riavvii):
+- quota giornaliera esaurita (429 "daily") → pausa fino alle 00:05 UTC;
+- `Retry-After` → rispettato, massimo 1 giorno;
+- 403 → "you are blocked": pausa 1 h, poi 1 giorno, poi stop finché non premi RIPROVA;
+- 5xx, timeout, rete → 1, 2, 4 … 60 min;
+- 400/404 per una singola risorsa → nessuna pausa.
+Durante una pausa si mostra l'ultima copia in cache, se c'è.

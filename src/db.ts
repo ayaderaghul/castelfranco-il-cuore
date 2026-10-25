@@ -3,10 +3,8 @@ import pg from "pg";
 // Keep DATE columns as 'YYYY-MM-DD' strings instead of JS Dates (avoids timezone shifts).
 pg.types.setTypeParser(1082, (v: string) => v);
 
+// The pool connects lazily, so pure modules (and unit tests) can import this file without a database.
 const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error("DATABASE_URL is not set");
-}
 
 export const pool = new pg.Pool({ connectionString, max: 5 });
 
@@ -128,6 +126,34 @@ ALTER TABLE suggestions ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'c
 ALTER TABLE item_collects ALTER COLUMN person_id DROP NOT NULL;
 -- What to remember for the next meeting with this person (shown on the card).
 ALTER TABLE people ADD COLUMN IF NOT EXISTS next_note TEXT NOT NULL DEFAULT '';
+-- Outside services: cached responses (with Expires / Last-Modified / ETag) and the pause
+-- state of each service, kept here so a restart doesn't forget them.
+-- (An early draft used other column names; these are only caches, so rebuild them if so.)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='http_cache' AND column_name='url') THEN
+    DROP TABLE http_cache;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='service_state' AND column_name='block_stage') THEN
+    DROP TABLE service_state;
+  END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS http_cache (
+  key TEXT PRIMARY KEY,
+  body TEXT NOT NULL,
+  etag TEXT,
+  last_modified TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS service_state (
+  service TEXT PRIMARY KEY,
+  paused_until TIMESTAMPTZ,
+  reason TEXT,
+  failures INT NOT NULL DEFAULT 0,
+  blocked_stage INT NOT NULL DEFAULT 0,
+  disabled BOOLEAN NOT NULL DEFAULT false,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS hygiene_logs (
   id SERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -147,5 +173,6 @@ CREATE INDEX IF NOT EXISTS chore_user_day_idx ON chore_logs(user_id, day);
 `;
 
 export async function migrate(): Promise<void> {
+  if (!connectionString) throw new Error("DATABASE_URL is not set");
   await pool.query(SCHEMA);
 }

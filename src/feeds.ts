@@ -1,54 +1,37 @@
-// Weather and news headlines, cached in memory.
-// Shared cloud servers (like Render's) are often blocked or rate-limited by
-// Google News and Open-Meteo, so each feed tries several sources in order.
+// Weather and news. Every outbound request goes through outbound.ts, which keeps a
+// persistent HTTP cache (Expires / If-Modified-Since / ETag) and pauses a service
+// after failures instead of retrying it. Nothing here runs unless a page asks for it.
+import { ServiceError, SERVICES, type ServiceId } from "./outbound.js";
+import { fetchCached, noticesFor } from "./outboundStore.js";
 
-interface CacheEntry<T> {
-  at: number;
-  value: T;
-}
-const cache = new Map<string, CacheEntry<unknown>>();
-
-async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
-  const hit = cache.get(key) as CacheEntry<T> | undefined;
-  if (hit && Date.now() - hit.at < ttlMs) return hit.value;
-  try {
-    const value = await load();
-    cache.set(key, { at: Date.now(), value });
-    return value;
-  } catch (err) {
-    if (hit) return hit.value; // serve stale data rather than nothing
-    throw err;
-  }
+interface Attempt<T> {
+  service: ServiceId;
+  name: string;
+  load: () => Promise<{ value: T; stale: boolean; fetchedAt: Date }>;
 }
 
-// met.no asks for an identifying User-Agent with a contact.
-const UA = "castelfranco-il-cuore/1.0 (+https://github.com/ayaderaghul/castelfranco-il-cuore)";
-
-async function fetchWithTimeout(url: string, ms = 10000): Promise<Response> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
-  try {
-    return await fetch(url, { signal: ctrl.signal, headers: { "User-Agent": UA, Accept: "*/*" } });
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-/** Tries each loader in turn; returns the first that succeeds with a usable result. */
-async function firstWorking<T>(label: string, loaders: { name: string; load: () => Promise<T> }[], ok: (v: T) => boolean): Promise<T> {
+/**
+ * Tries each source in order and returns the first that works. Paused services are
+ * skipped without a request. Notices explain any paused/blocked service on screen.
+ */
+async function firstWorking<T>(label: string, attempts: Attempt<T>[], ok: (v: T) => boolean) {
   const errors: string[] = [];
-  for (const l of loaders) {
+  let staleFallback: { value: T; stale: boolean; fetchedAt: Date; source: string } | null = null;
+  for (const a of attempts) {
     try {
-      const v = await l.load();
-      if (ok(v)) {
-        console.log(`${label}: ok da ${l.name}${errors.length ? ` (prima: ${errors.join("; ")})` : ""}`);
-        return v;
+      const r = await a.load();
+      if (!ok(r.value)) {
+        errors.push(`${a.name}: vuoto`);
+        continue;
       }
-      errors.push(`${l.name}: vuoto`);
+      if (!r.stale) return { ...r, source: a.name };
+      staleFallback ??= { ...r, source: a.name }; // keep looking for something fresh first
     } catch (err) {
-      errors.push(`${l.name}: ${(err as Error).message}`);
+      if (err instanceof ServiceError) errors.push(err.message);
+      else errors.push(`${a.name}: ${(err as Error).message}`);
     }
   }
+  if (staleFallback) return staleFallback;
   throw new Error(`${label} — ${errors.join("; ")}`);
 }
 
@@ -76,71 +59,92 @@ export function symbolToCode(symbol: string | undefined): number | null {
   return null;
 }
 
-async function metNo(c: City) {
-  const res = await fetchWithTimeout(
-    `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${c.lat.toFixed(4)}&lon=${c.lon.toFixed(4)}`,
-  );
-  if (!res.ok) throw new Error(`met.no ${res.status}`);
-  const j: any = await res.json();
-  const series: any[] = j.properties?.timeseries ?? [];
-  const now = series[0];
-  if (!now) throw new Error("met.no senza dati");
-  const next = now.data?.next_1_hours ?? now.data?.next_6_hours;
-  // Rough min/max over the next 24 hours.
-  const temps = series.slice(0, 24).map((t) => t.data?.instant?.details?.air_temperature).filter((x) => typeof x === "number");
+/** Extracts "now" from a met.no locationforecast response, picking the time step closest to now. */
+export function parseMetNo(j: any, now = new Date()) {
+  const series: any[] = j?.properties?.timeseries ?? [];
+  if (!series.length) throw new Error("met.no senza dati");
+  let cur = series[0];
+  for (const t of series) {
+    if (Date.parse(t.time) <= now.getTime()) cur = t;
+    else break;
+  }
+  const next = cur.data?.next_1_hours ?? cur.data?.next_6_hours;
+  const startIdx = series.indexOf(cur);
+  const temps = series
+    .slice(startIdx, startIdx + 24)
+    .map((t) => t.data?.instant?.details?.air_temperature)
+    .filter((x) => typeof x === "number");
+  const wind = cur.data?.instant?.details?.wind_speed;
   return {
-    key: c.key,
-    name: c.name,
-    tz: c.tz,
-    temp: now.data?.instant?.details?.air_temperature ?? null,
+    temp: cur.data?.instant?.details?.air_temperature ?? null,
     code: symbolToCode(next?.summary?.symbol_code),
     precipitation: next?.details?.precipitation_amount ?? null,
-    wind: now.data?.instant?.details?.wind_speed != null ? Math.round(now.data.instant.details.wind_speed * 3.6) : null,
+    wind: typeof wind === "number" ? Math.round(wind * 3.6) : null,
     max: temps.length ? Math.max(...temps) : null,
     min: temps.length ? Math.min(...temps) : null,
-    source: "met.no",
   };
 }
 
-async function openMeteo(c: City) {
-  const url =
-    `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}` +
-    `&current=temperature_2m,weather_code,precipitation,wind_speed_10m` +
-    `&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=${encodeURIComponent(c.tz)}`;
-  const res = await fetchWithTimeout(url);
-  if (!res.ok) throw new Error(`open-meteo ${res.status}`);
-  const j: any = await res.json();
-  return {
-    key: c.key,
-    name: c.name,
-    tz: c.tz,
-    temp: j.current?.temperature_2m ?? null,
-    code: j.current?.weather_code ?? null,
-    precipitation: j.current?.precipitation ?? null,
-    wind: j.current?.wind_speed_10m ?? null,
-    max: j.daily?.temperature_2m_max?.[0] ?? null,
-    min: j.daily?.temperature_2m_min?.[0] ?? null,
-    source: "open-meteo",
-  };
+function weatherAttempts(c: City): Attempt<any>[] {
+  return [
+    {
+      service: "metno",
+      name: "MET Norway",
+      load: async () => {
+        // met.no terms: identify the app, max 4 decimals, respect Expires / If-Modified-Since (done in fetchCached).
+        const r = await fetchCached(
+          "metno",
+          `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${c.lat.toFixed(4)}&lon=${c.lon.toFixed(4)}`,
+          { minFreshMs: 10 * 60_000 },
+        );
+        return { value: { ...parseMetNo(JSON.parse(r.body)), source: "metno" }, stale: r.stale, fetchedAt: r.fetchedAt };
+      },
+    },
+    {
+      service: "open-meteo",
+      name: "Open-Meteo",
+      load: async () => {
+        const url =
+          `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}` +
+          `&current=temperature_2m,weather_code,precipitation,wind_speed_10m` +
+          `&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=${encodeURIComponent(c.tz)}`;
+        const r = await fetchCached("open-meteo", url, { minFreshMs: 30 * 60_000 });
+        const j: any = JSON.parse(r.body);
+        return {
+          value: {
+            temp: j.current?.temperature_2m ?? null,
+            code: j.current?.weather_code ?? null,
+            precipitation: j.current?.precipitation ?? null,
+            wind: j.current?.wind_speed_10m ?? null,
+            max: j.daily?.temperature_2m_max?.[0] ?? null,
+            min: j.daily?.temperature_2m_min?.[0] ?? null,
+            source: "open-meteo",
+          },
+          stale: r.stale,
+          fetchedAt: r.fetchedAt,
+        };
+      },
+    },
+  ];
 }
 
 export async function getWeather() {
-  return cached("weather", 30 * 60 * 1000, async () => {
-    const cities = [];
-    for (const c of CITIES) {
-      cities.push(
-        await firstWorking(
-          `meteo ${c.name}`,
-          [
-            { name: "met.no", load: () => metNo(c) },
-            { name: "open-meteo", load: () => openMeteo(c) },
-          ],
-          (w) => w.temp !== null,
-        ),
-      );
+  const cities = [];
+  for (const c of CITIES) {
+    try {
+      const r = await firstWorking(`meteo ${c.name}`, weatherAttempts(c), (w: any) => w.temp !== null);
+      cities.push({ key: c.key, name: c.name, tz: c.tz, ...r.value, stale: r.stale, updatedAt: r.fetchedAt });
+    } catch (err) {
+      console.warn((err as Error).message);
+      cities.push({ key: c.key, name: c.name, tz: c.tz, temp: null, code: null, stale: true, updatedAt: null, source: null });
     }
-    return { cities };
-  });
+  }
+  const used = new Set(cities.map((c: any) => c.source).filter(Boolean));
+  return {
+    cities,
+    notices: await noticesFor(["metno", "open-meteo"]),
+    attribution: [...used].map((s) => SERVICES[s as ServiceId].credit).filter(Boolean),
+  };
 }
 
 // ---------------- news ----------------
@@ -196,86 +200,71 @@ export function parseGdelt(j: any): NewsItem[] {
   }));
 }
 
-async function rss(url: string, source: string, keep?: (i: NewsItem) => boolean) {
-  const res = await fetchWithTimeout(url);
-  if (!res.ok) throw new Error(`${res.status}`);
-  const items = parseRss(await res.text(), source).filter((i) => i.title);
-  return keep ? items.filter(keep) : items;
+const NEWS_FRESH = 30 * 60_000; // never re-ask a feed more than every 30 minutes
+
+function rss(service: ServiceId, name: string, url: string, source: string, keep?: (i: NewsItem) => boolean): Attempt<NewsItem[]> {
+  return {
+    service,
+    name,
+    load: async () => {
+      const r = await fetchCached(service, url, { minFreshMs: NEWS_FRESH });
+      const items = parseRss(r.body, source).filter((i) => i.title);
+      return { value: keep ? items.filter(keep) : items, stale: r.stale, fetchedAt: r.fetchedAt };
+    },
+  };
 }
 
-async function gdelt(query: string) {
+function gdelt(q: string): Attempt<NewsItem[]> {
   const url =
     "https://api.gdeltproject.org/api/v2/doc/doc?mode=artlist&format=json&maxrecords=15&sort=DateDesc&timespan=7d&query=" +
-    encodeURIComponent(query);
-  const res = await fetchWithTimeout(url, 12000);
-  if (!res.ok) throw new Error(`${res.status}`);
-  const text = await res.text();
-  let j: unknown;
-  try {
-    j = JSON.parse(text);
-  } catch {
-    throw new Error("risposta non JSON");
-  }
-  return parseGdelt(j).filter((i) => i.title);
+    encodeURIComponent(q);
+  return {
+    service: "gdelt",
+    name: "GDELT",
+    load: async () => {
+      const r = await fetchCached("gdelt", url, { minFreshMs: 60 * 60_000, timeoutMs: 12_000 });
+      let j: unknown;
+      try {
+        j = JSON.parse(r.body);
+      } catch {
+        throw new Error("risposta non JSON");
+      }
+      return { value: parseGdelt(j).filter((i) => i.title), stale: r.stale, fetchedAt: r.fetchedAt };
+    },
+  };
 }
 
 const ANSA = "https://www.ansa.it";
-const googleNews = (q: string) => `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=it&gl=IT&ceid=IT:it`;
 const mentionsVietnam = (i: NewsItem) => /vietnam|hanoi|hà nội|ho chi minh|hai ?phong/i.test(i.title);
 
-const SOURCES: Record<NewsTab, { name: string; load: () => Promise<NewsItem[]> }[]> = {
-  mondo: [
-    { name: "ANSA mondo", load: () => rss(`${ANSA}/sito/notizie/mondo/mondo_rss.xml`, "ANSA") },
-    { name: "Google News", load: () => rss("https://news.google.com/rss/headlines/section/topic/WORLD?hl=it&gl=IT&ceid=IT:it", "") },
-  ],
-  italia: [
-    { name: "ANSA", load: () => rss(`${ANSA}/sito/notizie/topnews/topnews_rss.xml`, "ANSA") },
-    { name: "Google News", load: () => rss("https://news.google.com/rss/headlines/section/topic/NATION?hl=it&gl=IT&ceid=IT:it", "") },
-  ],
-  europa: [
-    { name: "ANSA Europa", load: () => rss(`${ANSA}/europa/notizie/rss.xml`, "ANSA Europa") },
-    { name: "Google News", load: () => rss(googleNews('"Unione europea"'), "") },
-  ],
-  veneto: [
-    { name: "ANSA Veneto", load: () => rss(`${ANSA}/veneto/notizie/veneto_rss.xml`, "ANSA Veneto") },
-    { name: "Google News", load: () => rss(googleNews('"Castelfranco Veneto"'), "") },
-  ],
+const SOURCES: Record<NewsTab, Attempt<NewsItem[]>[]> = {
+  mondo: [rss("ansa", "ANSA mondo", `${ANSA}/sito/notizie/mondo/mondo_rss.xml`, "ANSA")],
+  italia: [rss("ansa", "ANSA", `${ANSA}/sito/notizie/topnews/topnews_rss.xml`, "ANSA")],
+  europa: [rss("ansa", "ANSA Europa", `${ANSA}/europa/notizie/rss.xml`, "ANSA Europa")],
+  veneto: [rss("ansa", "ANSA Veneto", `${ANSA}/veneto/notizie/veneto_rss.xml`, "ANSA Veneto")],
   vietnam: [
-    // VnExpress publishes plain RSS that servers can read; GDELT/Google often refuse cloud IPs.
-    { name: "VnExpress thời sự", load: () => rss("https://vnexpress.net/rss/thoi-su.rss", "VnExpress") },
-    { name: "VnExpress tin mới", load: () => rss("https://vnexpress.net/rss/tin-moi-nhat.rss", "VnExpress") },
-    { name: "GDELT", load: () => gdelt("vietnam sourcelang:italian") },
-    { name: "ANSA mondo", load: () => rss(`${ANSA}/sito/notizie/mondo/mondo_rss.xml`, "ANSA", mentionsVietnam) },
+    rss("vnexpress", "VnExpress thời sự", "https://vnexpress.net/rss/thoi-su.rss", "VnExpress"),
+    rss("vnexpress", "VnExpress tin mới", "https://vnexpress.net/rss/tin-moi-nhat.rss", "VnExpress"),
+    gdelt("vietnam sourcelang:italian"),
+    rss("ansa", "ANSA mondo", `${ANSA}/sito/notizie/mondo/mondo_rss.xml`, "ANSA", mentionsVietnam),
   ],
 };
 
 export async function getNews(tab: NewsTab) {
-  return cached(`news:${tab}`, 30 * 60 * 1000, async () => {
-    const items = await firstWorking(`notizie ${tab}`, SOURCES[tab], (v) => v.length > 0);
-    // Drop duplicate titles, keep the newest 8.
+  const attempts = SOURCES[tab];
+  const notices = () => noticesFor(attempts.map((a) => a.service));
+  try {
+    const r = await firstWorking(`notizie ${tab}`, attempts, (v) => v.length > 0);
     const seen = new Set<string>();
-    const unique = items.filter((i) => {
+    const unique = r.value.filter((i) => {
       const k = i.title.toLowerCase();
       if (seen.has(k)) return false;
       seen.add(k);
       return true;
     });
-    return { tab, items: unique.slice(0, 8) };
-  });
-}
-
-/** Fetches every feed once (at startup) so the first page is quick and the logs show which sources work. */
-export async function warmFeeds(): Promise<void> {
-  try {
-    await getWeather();
+    return { tab, items: unique.slice(0, 8), stale: r.stale, updatedAt: r.fetchedAt, notices: await notices() };
   } catch (err) {
-    console.warn("warm-up:", (err as Error).message);
-  }
-  for (const tab of NEWS_TABS) {
-    try {
-      await getNews(tab);
-    } catch (err) {
-      console.warn("warm-up:", (err as Error).message);
-    }
+    console.warn((err as Error).message);
+    return { tab, items: [], stale: true, updatedAt: null, notices: await notices() };
   }
 }

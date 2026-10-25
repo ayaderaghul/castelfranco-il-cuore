@@ -7,6 +7,7 @@ import { eventPage, diaryPage } from './pages/events.js';
 import { claudePage } from './pages/claude.js';
 import { collectionPage } from './pages/collection.js';
 import { hygienePage, choresPage } from './pages/goals.js';
+import { servicesPage } from './pages/services.js';
 
 const ROUTES = {
   accedi: authPage,
@@ -21,6 +22,7 @@ const ROUTES = {
   collezione: collectionPage,
   igiene: hygienePage,
   faccende: choresPage,
+  servizi: servicesPage,
 };
 
 let me = null;

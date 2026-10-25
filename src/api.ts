@@ -25,6 +25,8 @@ import {
   type Period,
 } from "./logic.js";
 import { getNews, getWeather, NEWS_TABS } from "./feeds.js";
+import { SERVICES, type ServiceId } from "./outbound.js";
+import { resetService, servicesOverview } from "./outboundStore.js";
 import { askClaudeToScore, autoScoringEnabled } from "./claude.js";
 
 export const SPRITES = [
@@ -857,12 +859,7 @@ export function apiRouter(): Router {
   r.get(
     "/weather",
     h(async (_req, res) => {
-      try {
-        res.json(await getWeather());
-      } catch (err) {
-        console.warn("weather unavailable:", (err as Error).message);
-        res.status(502).json({ error: "Meteo non disponibile." });
-      }
+      res.json(await getWeather());
     }),
   );
 
@@ -870,12 +867,25 @@ export function apiRouter(): Router {
     "/news",
     h(async (req, res) => {
       const tab = parse(z.enum(NEWS_TABS), req.query.tab ?? "vietnam");
-      try {
-        res.json(await getNews(tab));
-      } catch (err) {
-        console.warn("news unavailable:", (err as Error).message);
-        res.status(502).json({ error: "Notizie non disponibili." });
-      }
+      res.json(await getNews(tab));
+    }),
+  );
+
+  // Which outside services the server uses, their terms, and whether any is paused or blocking us.
+  r.get(
+    "/services",
+    h(async (_req, res) => {
+      res.json({ services: await servicesOverview() });
+    }),
+  );
+
+  r.post(
+    "/services/:id/reset",
+    h(async (req, res) => {
+      uid(req);
+      const id = parse(z.enum(Object.keys(SERVICES) as [ServiceId, ...ServiceId[]]), req.params.id);
+      await resetService(id);
+      res.json({ ok: true });
     }),
   );
 

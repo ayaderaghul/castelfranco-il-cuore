@@ -94,6 +94,9 @@ export async function profilePage(view) {
             <button type="button" data-city="haiphong" aria-pressed="${city === 'haiphong'}">HẢI PHÒNG</button>
           </div>
           ${ib ? html`<div class="small soft">Rompighiaccio: ${ib}</div>` : ''}
+          ${(weather?.notices ?? []).map((n) => html`<div class="err-text small" role="status">${n}</div>`)}
+          ${w && w.stale && w.updatedAt ? html`<div class="tiny muted">Meteo delle ${new Date(w.updatedAt).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}: il servizio ora è in pausa.</div>` : ''}
+          ${weather?.attribution?.length ? html`<div class="tiny muted">${weather.attribution.join(' · ')}</div>` : ''}
 
           <div class="panel hero">
             <div class="row between"><h2>I MIEI PUNTI</h2><span class="tiny muted">${dash.events} eventi</span></div>
@@ -147,13 +150,14 @@ export async function profilePage(view) {
           <div class="tabs px-tabs" role="group" aria-label="Notizie">
             ${NEWS_TABS.map(([k, l]) => html`<button type="button" data-tab="${k}" aria-pressed="${tab === k}">${l}</button>`)}
           </div>
+          ${(news?.notices ?? []).map((n) => html`<div class="err-text small" role="status">${n}</div>`)}
           <div class="panel news">
             ${newsErr
               ? html`<div class="empty-state">Notizie non disponibili ora.</div>`
               : !news
                 ? html`<div class="empty-state">Carico…</div>`
                 : news.items.length === 0
-                  ? html`<div class="empty-state">Nessuna notizia.</div>`
+                  ? html`<div class="empty-state">${news.notices?.length ? 'Notizie in pausa: vedi sopra.' : 'Nessuna notizia.'}</div>`
                   : news.items.map(
                       (n) => html`<div style="display:flex;flex-direction:column;gap:2px;padding-bottom:6px;border-bottom:2px solid var(--line)">
                         ${n.link ? html`<a href="${n.link}" target="_blank" rel="noopener noreferrer">${n.title}</a>` : html`<span>${n.title}</span>`}
@@ -168,6 +172,7 @@ export async function profilePage(view) {
             <a class="btn violet" href="#/claude">APRI</a>
           </div>
 
+          <a class="btn ghost" href="#/servizi" style="color:var(--muted)">servizi esterni e privacy</a>
           <button class="btn ghost" type="button" data-logout>esci</button>
         </div>`,
     );
@@ -197,12 +202,35 @@ export async function profilePage(view) {
     }
   });
 
+  // Weather is fetched only while this page is open and the tab is visible.
+  // The server answers from its cache until the provider's Expires time, so this is cheap.
+  const REFRESH_MS = 15 * 60 * 1000;
+  let lastWeather = 0;
+  const loadWeather = async () => {
+    if (!view.isConnected || document.visibilityState !== 'visible') return;
+    lastWeather = Date.now();
+    try {
+      weather = await api('/weather');
+      if (view.isConnected) draw();
+    } catch {
+      /* the panel just keeps the last value */
+    }
+  };
+  const timer = setInterval(() => {
+    if (!view.isConnected) return stop();
+    if (Date.now() - lastWeather >= REFRESH_MS) loadWeather();
+  }, 60 * 1000);
+  const onVisible = () => {
+    if (!view.isConnected) return stop();
+    if (document.visibilityState === 'visible' && Date.now() - lastWeather >= REFRESH_MS) loadWeather();
+  };
+  function stop() {
+    clearInterval(timer);
+    document.removeEventListener('visibilitychange', onVisible);
+  }
+  document.addEventListener('visibilitychange', onVisible);
+
   draw();
-  api('/weather')
-    .then((w) => {
-      weather = w;
-      draw();
-    })
-    .catch(() => {});
+  loadWeather();
   loadNews();
 }
