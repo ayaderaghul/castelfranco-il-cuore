@@ -1,3 +1,4 @@
+import { sfx } from '../sound.js';
 import { api, html, mount, toast, todayRome, addDays, diffDays, monthName, shiftMonth, fmtDate } from '../util.js';
 
 function monthDays(ym) {
@@ -166,10 +167,12 @@ export async function hygienePage(view) {
     try {
       if (a) {
         await api('/hygiene', { method: 'POST', body: { habit: a.dataset.add } });
+        sfx('coin');
         month = todayRome().slice(0, 7);
         await reload();
       } else if (u) {
         await api('/hygiene/undo', { method: 'POST', body: { habit: u.dataset.undo } });
+        sfx('undo');
         await reload();
       } else if (m && !m.disabled) {
         month = m.dataset.month;
@@ -284,9 +287,10 @@ export async function choresPage(view) {
         await api('/chores', { method: 'POST', body: { chore: a.dataset.add } });
         month = todayRome().slice(0, 7);
         await reload();
-        toast('Fatto! ✓');
+        toast('Fatto! ✓', false, 'coin');
       } else if (u) {
         await api('/chores/undo', { method: 'POST', body: { chore: u.dataset.undo } });
+        sfx('undo');
         await reload();
       } else if (m && !m.disabled) {
         month = m.dataset.month;

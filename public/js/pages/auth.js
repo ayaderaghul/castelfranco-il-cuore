@@ -1,3 +1,4 @@
+import { sfx } from '../sound.js';
 import { api, html, mount } from '../util.js';
 
 export async function authPage(view, { onLogin }) {
@@ -43,6 +44,7 @@ export async function authPage(view, { onLogin }) {
     btn.disabled = true;
     try {
       await api(mode === 'signup' ? '/auth/signup' : '/auth/login', { method: 'POST', body });
+      sfx('start');
       await onLogin();
     } catch (err) {
       error = err.message;

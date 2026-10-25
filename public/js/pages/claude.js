@@ -139,7 +139,7 @@ export async function claudePage(view) {
       }
       busy = '';
       draw();
-      toast(`Valutati ${ok} eventi su ${todo.length}.`);
+      toast(`Valutati ${ok} eventi su ${todo.length}.`, false, ok ? 'levelup' : 'ok');
       return;
     }
     if (e.target.closest('[data-export]')) {
@@ -167,7 +167,7 @@ export async function claudePage(view) {
     if (e.target.closest('[data-apply]') && preview) {
       try {
         const r = await api('/claude/import', { method: 'POST', body: { eventi: preview.eventi } });
-        toast(`Fatto: ${r.events} eventi valutati.${r.skipped.length ? ` Saltati: ${r.skipped.join(', ')}` : ''}`);
+        toast(`Fatto: ${r.events} eventi valutati.${r.skipped.length ? ` Saltati: ${r.skipped.join(', ')}` : ''}`, false, 'levelup');
         preview = null;
         draw();
       } catch (err) {

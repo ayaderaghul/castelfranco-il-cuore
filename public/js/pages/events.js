@@ -1,3 +1,4 @@
+import { sfx } from '../sound.js';
 import { api, html, mount, modal, toast, fmtDate, todayRome, relative } from '../util.js';
 import { sprite, CATEGORY_COLOR } from '../sprites.js';
 import { AXES } from './profile.js';
@@ -147,7 +148,7 @@ export async function eventPage(view, { params }) {
           is_private: st.priv,
         },
       });
-      toast(auto && !st.priv ? 'Evento salvato. Claude lo sta valutando…' : 'Evento salvato.');
+      toast(auto && !st.priv ? 'Evento salvato. Claude lo sta valutando…' : 'Evento salvato.', false, 'fanfare');
       location.hash = `#/${go}`;
     } catch (err) {
       toast(err.message, true);
@@ -184,7 +185,14 @@ export async function diaryPage(view) {
     polls += 1;
     setTimeout(async () => {
       if (!view.isConnected) return;
+      const waiting = new Set(data.events.filter(isPending).map((ev) => ev.id));
       data = await api('/events');
+      // Claude finished one in the background: celebrate (or sigh) with the points it gave.
+      const done = data.events.filter((ev) => waiting.has(ev.id) && ev.scored_at);
+      if (done.length) {
+        const sum = done.reduce((t, ev) => t + ev.points.reduce((a, pt) => a + pt.delta, 0), 0);
+        sfx(sum > 0 ? 'levelup' : sum < 0 ? 'down' : 'ok');
+      }
       draw();
       poll();
     }, 3000);
@@ -249,7 +257,7 @@ export async function diaryPage(view) {
       draw();
       try {
         const r = await api(`/events/${id}/score`, { method: 'POST', body: { includePrivate: priv } });
-        toast(`Valutato: ${r.points > 0 ? '+' : ''}${r.points} punti.`);
+        toast(`Valutato: ${r.points > 0 ? '+' : ''}${r.points} punti.`, false, r.points > 0 ? 'levelup' : r.points < 0 ? 'down' : 'ok');
       } catch (err) {
         toast(err.message, true);
       }
@@ -278,7 +286,7 @@ export async function diaryPage(view) {
     );
     if (!ok) return;
     await api(`/events/${ev.id}`, { method: 'DELETE', body: {} });
-    toast(undo.length ? `Evento eliminato: ${undo.join(', ')}` : 'Evento eliminato.');
+    toast(undo.length ? `Evento eliminato: ${undo.join(', ')}` : 'Evento eliminato.', false, 'del');
     data = await api('/events');
     draw();
   });

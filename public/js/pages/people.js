@@ -1,3 +1,4 @@
+import { sfx } from '../sound.js';
 import { api, html, mount, modal, confirmBox, toast, relative, hearts, expiryText } from '../util.js';
 import { sprite, CATEGORY_COLOR } from '../sprites.js';
 
@@ -131,16 +132,17 @@ export async function peoplePage(view, { params }) {
       );
       if (choice === 'done') {
         await api(`/suggestions/${s.dataset.sugg}/done`, { method: 'POST', body: {} });
-        toast('Raccolto! +1 nella collezione.');
+        toast('Raccolto! +1 nella collezione.', false, 'coin');
       } else if (choice === 'del') {
         await api(`/suggestions/${s.dataset.sugg}`, { method: 'DELETE', body: {} });
+        sfx('del');
       } else return;
       data = await api('/people');
       draw();
       return;
     }
     const t = e.target.closest('[data-tip]');
-    if (t) toast(t.dataset.tip);
+    if (t) toast(t.dataset.tip, false, null);
   });
 
   draw();
@@ -213,7 +215,7 @@ export async function personFormPage(view, { arg, params }) {
     if (e.target.closest('[data-delete]')) {
       if (!(await confirmBox(`Eliminare ${p.name}? Spariscono anche i suoi oggetti raccolti.`, 'ELIMINA'))) return;
       await api(`/people/${arg}`, { method: 'DELETE', body: {} });
-      toast('Eliminata.');
+      toast('Eliminata.', false, 'del');
       location.hash = `#/persone?tab=${p.category}`;
     }
   });

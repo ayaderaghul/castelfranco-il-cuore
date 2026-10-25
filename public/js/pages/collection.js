@@ -1,3 +1,4 @@
+import { sfx } from '../sound.js';
 import { api, html, mount, modal, confirmBox, toast } from '../util.js';
 import { sprite, SPRITE_NAMES, CATEGORY_COLOR } from '../sprites.js';
 
@@ -90,7 +91,7 @@ export async function collectionPage(view) {
 
   async function newItem(categoryId) {
     if (data.categories.length === 0) {
-      toast('Crea prima una categoria.');
+      toast('Crea prima una categoria.', false, 'error');
       return newCategory();
     }
     let chosen = 'stella';
@@ -173,13 +174,14 @@ export async function collectionPage(view) {
     try {
       if (res.kind === 'collect') {
         await api(`/items/${id}/collect`, { method: 'POST', body: { personId: res.personId } });
-        toast(res.personId === null ? 'Raccolto da sola!' : 'Raccolto!');
+        toast(res.personId === null ? 'Raccolto da sola!' : 'Raccolto!', false, 'coin');
       } else if (res.kind === 'plan') {
         await api('/suggestions', { method: 'POST', body: { personId: res.personId, itemId: id, tip: res.tip } });
         toast('Aggiunto ai “da raccogliere”.');
       } else if (res.kind === 'del') {
         if (!(await confirmBox(`Eliminare “${item.name}” e tutte le sue raccolte?`, 'ELIMINA'))) return;
         await api(`/items/${id}`, { method: 'DELETE', body: {} });
+        sfx('del');
       }
       await reload();
     } catch (err) {
@@ -195,6 +197,7 @@ export async function collectionPage(view) {
     if (dc) {
       if (!(await confirmBox(`Eliminare la categoria “${dc.dataset.name}” e i suoi oggetti?`, 'ELIMINA'))) return;
       await api(`/categories/${dc.dataset.delCat}`, { method: 'DELETE', body: {} });
+      sfx('del');
       return reload();
     }
     const it = e.target.closest('[data-item]');

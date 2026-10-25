@@ -56,3 +56,9 @@ Pause per servizio (tabella `service_state`, sopravvive ai riavvii):
 - 5xx, timeout, rete → 1, 2, 4 … 60 min;
 - 400/404 per una singola risorsa → nessuna pausa.
 Durante una pausa si mostra l'ultima copia in cache, se c'è.
+
+## Suoni
+
+Effetti 8-bit generati nel browser con la Web Audio API (`public/js/sound.js`): nessun file audio, nessuna richiesta esterna.
+Tick su ogni pulsante, fanfara quando salvi un evento, moneta quando raccogli un oggetto, "level up" quando Claude assegna punti, discesa se i punti calano, ronzio sugli errori.
+Il pulsante con l'altoparlante nella barra in basso li spegne/accende; la scelta resta salvata in questo browser.

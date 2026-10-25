@@ -148,6 +148,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--gold); outline: 
 .nav { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px; height: 72px; display: flex; justify-content: space-around; align-items: center; border-top: 3px solid var(--line); background: var(--panel-2); z-index: 10; padding-bottom: env(safe-area-inset-bottom); }
 .nav a { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; font-family: var(--pixel); font-size: 8px; color: var(--muted); text-decoration: none; }
 .nav a[aria-current="page"] { color: var(--gold); }
+.nav .nav-sound { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0; }
+.nav .nav-sound[aria-pressed="true"] { color: var(--gold); }
 .nav a.nav-plus { width: 52px; height: 52px; background: var(--gold); color: var(--bg); border: 3px solid var(--ink); box-shadow: 3px 3px 0 #000; font-size: 18px; }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 88px; max-width: 440px; width: calc(100% - 32px); background: var(--panel-2); border: 3px solid var(--gold); box-shadow: 4px 4px 0 #000; padding: 10px 12px; z-index: 30; font-size: 19px; }

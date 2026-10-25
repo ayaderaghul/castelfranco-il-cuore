@@ -193,7 +193,7 @@ export async function profilePage(view) {
     }
     const tip = e.target.closest('[data-tip]');
     if (tip) {
-      toast(tip.dataset.tip);
+      toast(tip.dataset.tip, false, null);
       return;
     }
     if (e.target.closest('[data-logout]')) {

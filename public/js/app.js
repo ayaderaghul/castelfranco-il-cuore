@@ -1,4 +1,5 @@
 import { api, toast } from './util.js';
+import { sfx, soundOn, setSound } from './sound.js';
 import { authPage } from './pages/auth.js';
 import { profilePage } from './pages/profile.js';
 import { mapPage } from './pages/map.js';
@@ -66,6 +67,34 @@ async function start() {
   else if (me && (location.hash === '' || location.hash.startsWith('#/accedi'))) location.hash = '#/profilo';
   else route();
 }
+
+// ---------- sound ----------
+const SPEAKER = (on) =>
+  `<svg width="20" height="20" viewBox="0 0 10 10" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M1 4h2v2H1zM3 3h1v4H3zM4 2h1v6H4z"/>${
+    on ? '<path fill="currentColor" d="M6 4h1v2H6zM8 3h1v4H8z"/>' : '<path fill="currentColor" d="M6 3h1v1H6zM8 3h1v1H8zM7 4h1v2H7zM6 6h1v1H6zM8 6h1v1H8z"/>'
+  }</svg>`;
+const soundBtn = document.getElementById('sound-toggle');
+function paintSound() {
+  soundBtn.innerHTML = SPEAKER(soundOn());
+  soundBtn.setAttribute('aria-pressed', String(soundOn()));
+  soundBtn.title = soundOn() ? 'Suoni attivi' : 'Suoni spenti';
+}
+soundBtn.addEventListener('click', () => {
+  setSound(!soundOn());
+  paintSound();
+});
+paintSound();
+
+// A soft tick for every button and link; the bottom bar gets its own two-note blip.
+document.addEventListener(
+  'click',
+  (e) => {
+    const el = e.target.closest('button, a, [role="button"], summary');
+    if (!el || el === soundBtn || el.disabled) return;
+    sfx(el.closest('#nav') ? 'nav' : 'blip');
+  },
+  true,
+);
 
 window.addEventListener('hashchange', route);
 start();

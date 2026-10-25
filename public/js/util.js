@@ -1,5 +1,7 @@
 // Small helpers shared by every page: safe HTML templating, API calls, toast, modal, dates.
 
+import { sfx } from './sound.js';
+
 export class Raw {
   constructor(s) {
     this.s = s;
@@ -63,7 +65,9 @@ export async function api(path, { method = 'GET', body } = {}) {
 }
 
 let toastTimer;
-export function toast(msg, isErr = false) {
+/** Shows a message. `sound`: effect name, or null for a silent info toast. Errors always buzz. */
+export function toast(msg, isErr = false, sound = 'ok') {
+  sfx(isErr ? 'error' : sound);
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.classList.toggle('err', isErr);
@@ -105,6 +109,7 @@ export function modal(tpl, bind) {
     };
     bind?.(inner, close);
     d.showModal();
+    sfx('open');
     inner.querySelector('[autofocus]')?.focus();
   });
 }
