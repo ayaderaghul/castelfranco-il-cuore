@@ -132,3 +132,21 @@ test("hair: one wash every 3 days, periods are 3 days long", () => {
   const cur = ps[ps.length - 1];
   assert.ok(cur.start <= "2026-10-29" && "2026-10-29" <= cur.end);
 });
+
+test("one missed shower is one miss, not a chain of misses", () => {
+  const rule = { periodDays: 1, base: 1 };
+  const today = "2026-10-29";
+  const start = "2026-10-24";
+  const run = (days: [string, number][]) => {
+    const ps = computePeriods(rule, new Map(days), start, today);
+    return { pct: monthAdherence(ps, "2026-10", today, start), st: ps.map((p) => periodStatus(p, today, start)) };
+  };
+  // one miss in 5 finished days → 80%, and only that day is "missed"
+  const one = run([["2026-10-24", 1], ["2026-10-26", 1], ["2026-10-27", 1], ["2026-10-28", 1]]);
+  assert.equal(one.pct, 0.8);
+  assert.deepEqual(one.st, ["met", "missed", "met", "met", "met", "pending"]);
+  // two misses (25 and 27) → 60%
+  assert.equal(run([["2026-10-24", 1], ["2026-10-26", 1], ["2026-10-28", 1]]).pct, 0.6);
+  // catching up the next day (2 showers) brings it back to 100%
+  assert.equal(run([["2026-10-24", 1], ["2026-10-26", 2], ["2026-10-27", 1], ["2026-10-28", 1]]).pct, 1);
+});

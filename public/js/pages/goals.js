@@ -107,7 +107,7 @@ export async function hygienePage(view) {
       let any = false;
       for (const k of Object.keys(g)) {
         const p = g[k].periods.find((x) => inPeriod(d, x));
-        if (!p || p.done < p.target) all = false;
+        if (!p || p.done < p.base) all = false;
         if ((g[k].days[d] ?? 0) > 0) any = true;
       }
       return all ? 'full' : any ? 'part' : '';
@@ -224,8 +224,9 @@ export async function choresPage(view) {
       for (const p of c.periods)
         if ((p.status === 'met' || p.status === 'missed') && p.end.slice(0, 7) === month) {
           got += Math.min(p.done, p.target);
-          need += p.target;
+          need += p.base;
         }
+    got = Math.min(got, need);
     mount(
       view,
       html`<div class="head">

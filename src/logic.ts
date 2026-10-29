@@ -136,14 +136,20 @@ export type PeriodStatus = "met" | "missed" | "pending" | "future" | "before";
 export function periodStatus(p: Period, today: string, trackingStart: string): PeriodStatus {
   if (diffDays(p.end, trackingStart) < 0) return "before";
   if (diffDays(p.start, today) > 0) return "future";
-  if (p.done >= p.target) return "met";
+  // A period is met when its own goal is done; carried-over debt is a chance to catch up,
+  // not a second failure (otherwise one missed day would turn every following day red).
+  if (p.done >= p.base) return "met";
   if (diffDays(p.end, today) >= 0) return "pending"; // still running
   return "missed";
 }
 
 /**
- * Share of the goal achieved in a month: sum(min(done, target)) / sum(target)
- * over periods that end in the month. A period still running only counts once it's met.
+ * Share of the goal achieved in a month, over periods that end in it:
+ *   got  = sum(min(done, target))  — catching up on a missed period counts
+ *   need = sum(base)               — each period's own goal, counted once
+ * capped at 100%. (Dividing by target would count one missed day again in every
+ * following period: 1 miss in 5 days showed as 50% instead of 80%.)
+ * A period still running only counts once it's met.
  */
 export function monthTotals(periods: Period[], month: string, today: string, trackingStart: string): { got: number; need: number } {
   const { first, last } = monthBounds(month);
@@ -154,9 +160,9 @@ export function monthTotals(periods: Period[], month: string, today: string, tra
     const st = periodStatus(p, today, trackingStart);
     if (st === "before" || st === "future" || st === "pending") continue;
     got += Math.min(p.done, p.target);
-    need += p.target;
+    need += p.base;
   }
-  return { got, need };
+  return { got: Math.min(got, need), need };
 }
 
 export function monthAdherence(periods: Period[], month: string, today: string, trackingStart: string): number | null {
