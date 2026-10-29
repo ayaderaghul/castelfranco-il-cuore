@@ -90,7 +90,10 @@ export async function hygienePage(view) {
     if (cur.done >= cur.target) return html`<span class="small" style="color:var(--green)">obiettivo fatto ✓</span>`;
     const parts = [];
     if (cur.carry > 0) parts.push(html`<span class="gold">+${cur.carry} riportat${cur.carry === 1 ? 'o' : 'i'} dal periodo prima</span>`);
-    if (key === 'capelli') parts.push(html`<span class="muted">${cur.end === data.today ? 'scade oggi' : 'scade domani'}</span>`);
+    if (key === 'capelli') {
+      const left = diffDays(cur.end, data.today);
+      parts.push(html`<span class="muted">${left <= 0 ? 'scade oggi' : left === 1 ? 'scade domani' : `scade tra ${left} giorni`}</span>`);
+    }
     else parts.push(html`<span class="muted">mancano ${cur.target - cur.done}</span>`);
     return html`<span class="small">${parts.map((p, i) => html`${i ? ' · ' : ''}${p}`)}</span>`;
   };

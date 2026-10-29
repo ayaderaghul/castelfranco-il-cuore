@@ -10,6 +10,7 @@ import {
   periodStatus,
   todayRome,
   warmth,
+  HABITS,
   HEART_WEIGHT,
   yearSummary,
 } from "./logic.js";
@@ -122,4 +123,12 @@ test("feeds: ANSA-style RSS, GDELT JSON and met.no symbols parse", () => {
   assert.equal(symbolToCode("clearsky_night"), 0);
   assert.equal(symbolToCode("heavyrainandthunder"), 95);
   assert.equal(symbolToCode("fog"), 45);
+});
+
+test("hair: one wash every 3 days, periods are 3 days long", () => {
+  assert.equal(HABITS.capelli.periodDays, 3);
+  const ps = computePeriods(HABITS.capelli, new Map([["2026-10-27", 1]]), "2026-10-20", "2026-10-29");
+  for (const p of ps) assert.equal(diffDays(p.end, p.start), 2);
+  const cur = ps[ps.length - 1];
+  assert.ok(cur.start <= "2026-10-29" && "2026-10-29" <= cur.end);
 });

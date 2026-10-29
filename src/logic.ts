@@ -92,7 +92,7 @@ export function approxDate(kind: WhenKind, today: string, exact?: string): strin
 export const EPOCH = "2026-01-05";
 
 export interface PeriodRule {
-  periodDays: number; // 1 = daily, 2 = every two days, 7 = weekly
+  periodDays: number; // 1 = daily, 3 = every three days, 7 = weekly
   base: number; // how many times per period
 }
 
@@ -199,7 +199,7 @@ export function yearSummary(
 
 export const HABITS = {
   doccia: { periodDays: 1, base: 1, label: "Doccia", rule: "1 al giorno" },
-  capelli: { periodDays: 2, base: 1, label: "Capelli", rule: "1 ogni 2 giorni" },
+  capelli: { periodDays: 3, base: 1, label: "Capelli", rule: "1 ogni 3 giorni" },
   denti: { periodDays: 1, base: 3, label: "Denti", rule: "3 al giorno" },
 } as const;
 export type Habit = keyof typeof HABITS;
